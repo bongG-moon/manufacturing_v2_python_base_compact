@@ -7,7 +7,7 @@ from .config import SYSTEM_PROMPT, get_llm
 from .data_analysis_engine import execute_analysis_query
 from .data_tools import RETRIEVAL_TOOL_MAP, pick_retrieval_tool
 from .filter_utils import normalize_text
-from .number_format import format_rows_with_quantity_units
+from .number_format import format_rows_for_display
 from .parameter_resolver import resolve_required_params
 
 
@@ -108,7 +108,7 @@ def _format_result_preview(result: Dict[str, Any], max_rows: int = 5) -> str:
     if not isinstance(rows, list) or not rows:
         return "없음"
 
-    preview_rows, _ = format_rows_with_quantity_units([row for row in rows[:max_rows] if isinstance(row, dict)])
+    preview_rows, _ = format_rows_for_display([row for row in rows[:max_rows] if isinstance(row, dict)])
     return json.dumps(preview_rows, ensure_ascii=False, indent=2)
 
 
@@ -137,8 +137,10 @@ def _build_response_prompt(user_input: str, result: Dict[str, Any], chat_history
 1. 반드시 현재 결과 테이블 기준으로만 설명하세요.
 2. 원본 전체 데이터 기준처럼 말하지 마세요.
 3. 사용자의 요청이 그룹화, 상위 N, 정렬이라면 그 결과 구조를 짚어 주세요.
-4. 수량 컬럼은 필요한 경우 K 또는 M 단위로 자연스럽게 표현해도 됩니다.
-5. 3~5문장 정도로 짧고 명확하게 답하세요.
+4. preview에 이미 K 또는 M 단위가 붙은 값은 다시 단위를 덧붙이지 마세요.
+5. 예를 들어 2.8K를 2,800K처럼 다시 쓰면 안 됩니다.
+6. 수량 컬럼은 필요한 경우 K 또는 M 단위로 자연스럽게 표현해도 됩니다.
+7. 3~5문장 정도로 짧고 명확하게 답하세요.
 """
 
 

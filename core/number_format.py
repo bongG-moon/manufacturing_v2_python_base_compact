@@ -25,6 +25,8 @@ NON_QUANTITY_KEYWORDS = {
     "대기시간",
 }
 
+REDUNDANT_UNIT_COLUMNS = {"단위"}
+
 
 def is_quantity_column(column_name: str) -> bool:
     name = str(column_name or "").strip().lower()
@@ -88,6 +90,22 @@ def format_rows_with_quantity_units(rows: List[Dict[str, Any]]) -> Tuple[List[Di
             formatted_row[str(key)] = format_number_by_unit(value, unit_map.get(str(key)))
         formatted_rows.append(formatted_row)
     return formatted_rows, unit_map
+
+
+def format_rows_for_display(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, str | None]]:
+    formatted_rows, unit_map = format_rows_with_quantity_units(rows)
+    display_rows: List[Dict[str, Any]] = []
+
+    for row in formatted_rows:
+        display_row: Dict[str, Any] = {}
+        for key, value in row.items():
+            if key in REDUNDANT_UNIT_COLUMNS and any(unit_map.get(column) for column in unit_map):
+                continue
+            renamed_key = f"{key} ({unit_map[key]})" if unit_map.get(key) else key
+            display_row[renamed_key] = value
+        display_rows.append(display_row)
+
+    return display_rows, unit_map
 
 
 def format_summary_quantity(value: float | int) -> str:

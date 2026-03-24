@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from core.agent import run_agent
-from core.number_format import format_rows_with_quantity_units
+from core.number_format import format_rows_for_display
 
 
 st.set_page_config(page_title="Compact Manufacturing Chat", layout="wide")
@@ -24,16 +24,8 @@ def _empty_context() -> Dict[str, Any]:
 
 
 def _format_display_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
-    formatted_rows, unit_map = format_rows_with_quantity_units(rows)
-    df = pd.DataFrame(formatted_rows)
-    if df.empty:
-        return df
-
-    renamed_columns = {}
-    for column, unit in unit_map.items():
-        if unit:
-            renamed_columns[column] = f"{column} ({unit})"
-    return df.rename(columns=renamed_columns)
+    formatted_rows, _ = format_rows_for_display(rows)
+    return pd.DataFrame(formatted_rows)
 
 
 def _render_applied_params(applied_params: Dict[str, Any]) -> None:
