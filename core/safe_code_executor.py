@@ -45,6 +45,18 @@ SAFE_BUILTINS = {
 }
 
 
+def _has_result_assignment(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "result":
+                    return True
+        if isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "result":
+                return True
+    return False
+
+
 def validate_python_code(code: str) -> Tuple[bool, str | None]:
     try:
         tree = ast.parse(code)
@@ -58,6 +70,10 @@ def validate_python_code(code: str) -> Tuple[bool, str | None]:
             return False, f"허용되지 않는 이름입니다: {node.id}"
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, "dunder 속성 접근은 허용되지 않습니다."
+
+    if not _has_result_assignment(tree):
+        return False, "pandas 코드에는 `result = ...` 할당이 필요합니다."
+
     return True, None
 
 
@@ -78,8 +94,10 @@ def execute_safe_dataframe_code(code: str, data: List[Dict[str, Any]]) -> Dict[s
     result = local_vars.get("result")
     if result is None:
         return {"success": False, "error_message": "분석 코드가 result 변수를 만들지 않았습니다.", "data": []}
+
     if isinstance(result, pd.Series):
         result = result.to_frame().reset_index()
+
     if not isinstance(result, pd.DataFrame):
         return {"success": False, "error_message": "분석 결과가 DataFrame이 아닙니다.", "data": []}
 
