@@ -99,7 +99,7 @@ def render_tool_results(tool_results: List[Dict[str, Any]]) -> None:
             data = result.get("data", [])
             if data:
                 st.markdown("**분석 결과 테이블**")
-                st.dataframe(_format_display_dataframe(data), use_container_width=True, hide_index=True)
+                st.dataframe(_format_display_dataframe(data), width="stretch", hide_index=True)
 
             st.markdown("**이번 요청에 반영된 조건**")
             _render_applied_params(result.get("applied_params", {}))
