@@ -33,6 +33,7 @@ APPLIED_PARAM_FIELDS = [
 
 
 def _format_chat_history(chat_history: List[Dict[str, str]], max_messages: int = 6) -> str:
+    # Only recent turns are passed to prompts to keep context small and readable.
     if not chat_history:
         return "(이전 대화 없음)"
 
@@ -45,6 +46,7 @@ def _format_chat_history(chat_history: List[Dict[str, str]], max_messages: int =
 
 
 def _extract_current_data_columns(current_data: Dict[str, Any] | None) -> List[str]:
+    # Follow-up parameter resolution uses the current table schema as a hint.
     if not isinstance(current_data, dict):
         return []
 
@@ -73,6 +75,7 @@ def _pick_applied_params(extracted_params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _looks_like_fresh_retrieval(query_text: str) -> bool:
+    # Decide whether the user is asking for new source data or transforming the current table.
     normalized = normalize_text(query_text)
     retrieval_tokens = ["생산", "목표", "불량", "설비", "가동률", "재공", "wip", "오늘", "어제", "조회"]
     transform_tokens = ["상위", "하위", "그룹", "그룹화", "정렬", "비교", "요약", "필터", "기준", "별로"]
@@ -80,6 +83,7 @@ def _looks_like_fresh_retrieval(query_text: str) -> bool:
 
 
 def _prune_followup_params(user_input: str, extracted_params: Dict[str, Any]) -> Dict[str, Any]:
+    # Follow-up analysis should not blindly carry every old filter into the new table view.
     normalized = normalize_text(user_input)
     cleaned = dict(extracted_params or {})
     filter_fields = ["process_name", "product_name", "line_name", "mode", "den", "tech", "lead", "mcp_no"]
@@ -145,6 +149,7 @@ def _build_response_prompt(user_input: str, result: Dict[str, Any], chat_history
 
 
 def _generate_response(user_input: str, result: Dict[str, Any], chat_history: List[Dict[str, str]]) -> str:
+    # One response function keeps retrieval and follow-up answers in the same style.
     prompt = _build_response_prompt(user_input, result, chat_history)
     try:
         llm = get_llm()
@@ -169,6 +174,7 @@ def _run_followup_analysis(
     current_data: Dict[str, Any],
     extracted_params: Dict[str, Any],
 ) -> Dict[str, Any]:
+    # Follow-up means: transform the current dataframe and explain the transformed result.
     cleaned_params = _prune_followup_params(user_input, extracted_params)
     result = execute_analysis_query(
         query_text=user_input,
@@ -195,6 +201,7 @@ def _run_retrieval(
     current_data: Dict[str, Any] | None,
     extracted_params: Dict[str, Any],
 ) -> Dict[str, Any]:
+    # Retrieval means: pick a source dataset first, then fetch fresh rows.
     retrieval_key = pick_retrieval_tool(user_input)
     if not retrieval_key:
         return {
@@ -239,6 +246,10 @@ def run_agent(
     context: Dict[str, Any] | None = None,
     current_data: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
+    # Main pipeline:
+    # 1) resolve filters
+    # 2) decide retrieval vs follow-up
+    # 3) run the selected branch
     chat_history = chat_history or []
     context = context or {}
     current_data = current_data if isinstance(current_data, dict) else None

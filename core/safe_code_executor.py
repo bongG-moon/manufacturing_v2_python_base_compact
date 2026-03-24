@@ -46,6 +46,8 @@ SAFE_BUILTINS = {
 
 
 def _has_result_assignment(tree: ast.AST) -> bool:
+    # We require a real `result = ...` assignment so the caller always knows
+    # which dataframe should be returned to the UI.
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
@@ -58,6 +60,7 @@ def _has_result_assignment(tree: ast.AST) -> bool:
 
 
 def validate_python_code(code: str) -> Tuple[bool, str | None]:
+    # This validator is the safety gate before executing LLM-generated pandas code.
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
@@ -78,6 +81,7 @@ def validate_python_code(code: str) -> Tuple[bool, str | None]:
 
 
 def execute_safe_dataframe_code(code: str, data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Convert raw rows into a dataframe, run validated code, then convert back to rows.
     ok, error = validate_python_code(code)
     if not ok:
         return {"success": False, "error_message": error, "data": []}
