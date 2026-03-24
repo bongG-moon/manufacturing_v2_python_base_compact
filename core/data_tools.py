@@ -1,6 +1,8 @@
 import random
 from typing import Any, Dict, List, Optional
 
+from .number_format import format_summary_quantity
+
 
 PROCESS_SPECS = [
     {"family": "ASSY_PREP", "공정": "incoming_sort", "라인": "ASSY-L1"},
@@ -182,7 +184,7 @@ def get_production_data(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     rows = _apply_common_filters(rows, params)
     total = sum(int(item["production"]) for item in rows)
-    return {"success": True, "tool_name": "get_production_data", "data": rows, "summary": f"총 {len(rows)}건, 총 생산량 {total:,} K"}
+    return {"success": True, "tool_name": "get_production_data", "data": rows, "summary": f"총 {len(rows)}건, 총 생산량 {format_summary_quantity(total)}"}
 
 
 def get_target_data(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -207,7 +209,7 @@ def get_target_data(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     rows = _apply_common_filters(rows, params)
     total = sum(int(item["target"]) for item in rows)
-    return {"success": True, "tool_name": "get_target_data", "data": rows, "summary": f"총 {len(rows)}건, 총 목표량 {total:,} K"}
+    return {"success": True, "tool_name": "get_target_data", "data": rows, "summary": f"총 {len(rows)}건, 총 목표량 {format_summary_quantity(total)}"}
 
 
 def get_defect_rate(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -293,7 +295,7 @@ def get_wip_status(params: Dict[str, Any]) -> Dict[str, Any]:
     rows = _apply_common_filters(rows, params)
     total = sum(int(item["재공수량"]) for item in rows)
     delayed = sum(1 for item in rows if item["상태"] in {"HOLD", "REWORK", "WAIT_QA", "WAIT_EQUIP", "WAIT_MATERIAL"})
-    return {"success": True, "tool_name": "get_wip_status", "data": rows, "summary": f"총 {len(rows)}건, 총 WIP {total:,} EA, 대기/홀드 {delayed}건"}
+    return {"success": True, "tool_name": "get_wip_status", "data": rows, "summary": f"총 {len(rows)}건, 총 WIP {format_summary_quantity(total)} EA, 대기/홀드 {delayed}건"}
 
 
 RETRIEVAL_TOOL_MAP = {

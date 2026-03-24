@@ -4,10 +4,10 @@ import pandas as pd
 import streamlit as st
 
 from core.agent import run_agent
+from core.number_format import format_rows_with_quantity_units
 
 
 st.set_page_config(page_title="Compact Manufacturing Chat", layout="wide")
-
 
 def _empty_context() -> Dict[str, Any]:
     return {
@@ -21,6 +21,39 @@ def _empty_context() -> Dict[str, Any]:
         "lead": None,
         "mcp_no": None,
     }
+
+
+def _format_display_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
+    formatted_rows, unit_map = format_rows_with_quantity_units(rows)
+    df = pd.DataFrame(formatted_rows)
+    if df.empty:
+        return df
+
+    renamed_columns = {}
+    for column, unit in unit_map.items():
+        if unit:
+            renamed_columns[column] = f"{column} ({unit})"
+    return df.rename(columns=renamed_columns)
+
+
+def _render_applied_params(applied_params: Dict[str, Any]) -> None:
+    label_map = {
+        "date": "날짜",
+        "process_name": "공정",
+        "product_name": "제품",
+        "line_name": "라인",
+        "mode": "MODE",
+        "den": "DEN",
+        "tech": "TECH",
+        "lead": "LEAD",
+        "mcp_no": "MCP",
+        "group_by": "그룹 기준",
+    }
+    for key, value in applied_params.items():
+        if value in (None, "", []):
+            continue
+        rendered = ", ".join(str(item) for item in value) if isinstance(value, list) else str(value)
+        st.markdown(f"- **{label_map.get(key, key)}**: {rendered}")
 
 
 def init_session_state() -> None:
@@ -49,9 +82,10 @@ def render_context() -> None:
     for field, label in label_map:
         value = context.get(field)
         if value:
-            active.append(f"{label}: {value}")
+            rendered = ", ".join(str(item) for item in value) if isinstance(value, list) else str(value)
+            active.append(f"{label}: {rendered}")
     if active:
-        st.info("현재 컨텍스트 | " + " / ".join(str(item) for item in active))
+        st.info("현재 조회 조건 | " + " / ".join(active))
 
 
 def render_tool_results(tool_results: List[Dict[str, Any]]) -> None:
@@ -64,10 +98,11 @@ def render_tool_results(tool_results: List[Dict[str, Any]]) -> None:
         with st.expander(title, expanded=True):
             data = result.get("data", [])
             if data:
-                st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+                st.markdown("**분석 결과 테이블**")
+                st.dataframe(_format_display_dataframe(data), use_container_width=True, hide_index=True)
 
-            st.markdown("**추출된 필터 조건**")
-            st.json(result.get("applied_params", {}))
+            st.markdown("**이번 요청에 반영된 조건**")
+            _render_applied_params(result.get("applied_params", {}))
 
             if result.get("tool_name") == "analyze_current_data":
                 analysis_plan = result.get("analysis_plan", {})
@@ -76,15 +111,18 @@ def render_tool_results(tool_results: List[Dict[str, Any]]) -> None:
                     "heuristic": "규칙 기반으로 pandas 전처리 계획을 생성했습니다.",
                 }.get(str(result.get("analysis_logic", "")).lower(), "")
 
-                st.markdown("**분석 과정 요약**")
+                st.markdown("**이번 분석 요약**")
                 if source_label:
                     st.markdown(f"- **계획 생성 방식**: {source_label}")
                 if analysis_plan.get("intent"):
-                    st.markdown(f"- **사용자 의도 해석**: {analysis_plan.get('intent')}")
+                    st.markdown(f"- **분석 유형**: {analysis_plan.get('intent')}")
                 if analysis_plan.get("operations"):
-                    st.markdown(f"- **적용 단계**: {', '.join(analysis_plan.get('operations', []))}")
-                if analysis_plan.get("output_columns"):
-                    st.markdown(f"- **예상 결과 컬럼**: {', '.join(analysis_plan.get('output_columns', []))}")
+                    st.markdown(f"- **적용 작업**: {', '.join(analysis_plan.get('operations', []))}")
+                if analysis_plan.get("group_by_columns"):
+                    st.markdown(f"- **기준 컬럼**: {', '.join(analysis_plan.get('group_by_columns', []))}")
+                if analysis_plan.get("metric_column"):
+                    st.markdown(f"- **집계 지표**: {analysis_plan.get('metric_column')}")
+                st.markdown(f"- **결과 행 수**: {len(data)}행")
 
                 st.markdown("**생성된 pandas 코드**")
                 st.code(result.get("generated_code", ""), language="python")
@@ -99,8 +137,8 @@ def sync_context(extracted_params: Dict[str, Any]) -> None:
 
 def main() -> None:
     init_session_state()
-    st.title("제조 데이터 경량 채팅 서비스")
-    st.caption("생산/목표/불량/설비/WIP 조회와 current_data 기반 pandas 후속 분석만 남긴 compact 버전")
+    st.title("제조 데이터 채팅 분석")
+    st.caption("생산, 목표, 불량, 설비, WIP 조회 후 현재 결과를 이어서 분석할 수 있습니다.")
     render_context()
 
     for message in st.session_state.messages:
@@ -109,7 +147,7 @@ def main() -> None:
             if message.get("tool_results"):
                 render_tool_results(message["tool_results"])
 
-    user_input = st.chat_input("질문을 입력하세요")
+    user_input = st.chat_input("예: 오늘 생산량 보여줘 / 그 결과를 MODE별로 상위 3개만 정리해줘")
     if not user_input:
         return
 
