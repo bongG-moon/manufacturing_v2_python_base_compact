@@ -5,6 +5,8 @@ from .number_format import format_summary_quantity
 
 
 PROCESS_SPECS = [
+    # 예제 서비스지만 현업 느낌을 내기 위해
+    # 공정군(family), 실제 공정명, 라인 정보를 함께 둡니다.
     {"family": "ASSY_PREP", "공정": "incoming_sort", "라인": "ASSY-L1"},
     {"family": "ASSY_PREP", "공정": "wafer_bake", "라인": "ASSY-L1"},
     {"family": "ASSY_PREP", "공정": "plasma_clean", "라인": "ASSY-L2"},
@@ -29,6 +31,7 @@ PROCESS_SPECS = [
 ]
 
 PRODUCTS = [
+    # 제품 조건 추출과 후속 분석에서 사용할 대표 제품 조합입니다.
     {"MODE": "DDR5_6400", "DEN": "16Gb", "TECH": "WB", "LEAD": "96L", "MCP_NO": "MCP-DR5-016G-2H"},
     {"MODE": "DDR5_5600", "DEN": "32Gb", "TECH": "WB", "LEAD": "128L", "MCP_NO": "MCP-DR5-032G-2H"},
     {"MODE": "LPDDR5X_8533", "DEN": "64Gb", "TECH": "FC", "LEAD": "168B", "MCP_NO": "MCP-LP5X-064G-4H"},
@@ -130,6 +133,8 @@ def _matches_product(row: Dict[str, Any], product_name: Optional[str]) -> bool:
 
 
 def _apply_common_filters(rows: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    # 생산/목표/불량/설비/WIP가 모두 같은 필터 규칙을 쓰도록 공통 함수로 분리했습니다.
+    # 이렇게 해야 데이터 종류가 달라도 같은 질문이 같은 방식으로 동작합니다.
     filtered = []
     for row in rows:
         if not _match_any(str(row.get("공정", "")), params.get("process_name")):
@@ -153,6 +158,8 @@ def _apply_common_filters(rows: List[Dict[str, Any]], params: Dict[str, Any]) ->
 
 
 def _iter_valid_process_product_pairs():
+    # 모든 공정에 모든 제품을 붙이면 비현실적인 조합이 생길 수 있으므로
+    # TECH와 공정군의 호환성을 먼저 확인한 뒤 데이터 행을 생성합니다.
     for spec in PROCESS_SPECS:
         for product in PRODUCTS:
             if spec["family"] in PRODUCT_TECH_FAMILY.get(product["TECH"], set()):
@@ -160,6 +167,8 @@ def _iter_valid_process_product_pairs():
 
 
 def get_production_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # 실제 DB 대신 재현 가능한 mock 데이터를 만듭니다.
+    # 날짜를 seed로 사용해 같은 날짜 질문에는 같은 결과가 나오도록 했습니다.
     date = str(params["date"])
     random.seed(_stable_seed(date))
     rows: List[Dict[str, Any]] = []
@@ -184,10 +193,16 @@ def get_production_data(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     rows = _apply_common_filters(rows, params)
     total = sum(int(item["production"]) for item in rows)
-    return {"success": True, "tool_name": "get_production_data", "data": rows, "summary": f"총 {len(rows)}건, 총 생산량 {format_summary_quantity(total)}"}
+    return {
+        "success": True,
+        "tool_name": "get_production_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 총 생산량 {format_summary_quantity(total)}",
+    }
 
 
 def get_target_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # 목표 데이터는 생산 데이터와 같은 축을 사용하되 값만 목표치로 둡니다.
     date = str(params["date"])
     rows: List[Dict[str, Any]] = []
     for spec, product in _iter_valid_process_product_pairs():
@@ -209,10 +224,17 @@ def get_target_data(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     rows = _apply_common_filters(rows, params)
     total = sum(int(item["target"]) for item in rows)
-    return {"success": True, "tool_name": "get_target_data", "data": rows, "summary": f"총 {len(rows)}건, 총 목표량 {format_summary_quantity(total)}"}
+    return {
+        "success": True,
+        "tool_name": "get_target_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 총 목표량 {format_summary_quantity(total)}",
+    }
 
 
 def get_defect_rate(params: Dict[str, Any]) -> Dict[str, Any]:
+    # 불량 데이터는 검사수량, 불량수량, 불량률을 함께 만들어
+    # 후속 질문에서 정렬/그룹화/비교가 가능하도록 구성합니다.
     date = str(params["date"])
     random.seed(_stable_seed(date, 2000))
     rows: List[Dict[str, Any]] = []
@@ -241,10 +263,17 @@ def get_defect_rate(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     rows = _apply_common_filters(rows, params)
     avg_rate = sum(float(item["defect_rate"]) for item in rows) / len(rows) if rows else 0.0
-    return {"success": True, "tool_name": "get_defect_rate", "data": rows, "summary": f"총 {len(rows)}건, 평균 불량률 {avg_rate:.2f}%"}
+    return {
+        "success": True,
+        "tool_name": "get_defect_rate",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 평균 불량률 {avg_rate:.2f}%",
+    }
 
 
 def get_equipment_status(params: Dict[str, Any]) -> Dict[str, Any]:
+    # 설비 데이터는 시간 합계와 가동률을 같이 제공해
+    # "가동률 낮은 순" 같은 질문을 바로 처리할 수 있게 합니다.
     date = str(params["date"])
     random.seed(_stable_seed(date, 3000))
     rows = []
@@ -268,10 +297,17 @@ def get_equipment_status(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     rows = _apply_common_filters(rows, params)
     avg_util = sum(float(item["가동률"]) for item in rows) / len(rows) if rows else 0.0
-    return {"success": True, "tool_name": "get_equipment_status", "data": rows, "summary": f"총 {len(rows)}대, 평균 가동률 {avg_util:.1f}%"}
+    return {
+        "success": True,
+        "tool_name": "get_equipment_status",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 평균 가동률 {avg_util:.1f}%",
+    }
 
 
 def get_wip_status(params: Dict[str, Any]) -> Dict[str, Any]:
+    # WIP는 재공수량과 상태를 함께 보여줘야
+    # HOLD만 보기, 상위 재공 보기 같은 후속 질문이 가능합니다.
     date = str(params["date"])
     random.seed(_stable_seed(date, 4000))
     rows = []
@@ -295,7 +331,12 @@ def get_wip_status(params: Dict[str, Any]) -> Dict[str, Any]:
     rows = _apply_common_filters(rows, params)
     total = sum(int(item["재공수량"]) for item in rows)
     delayed = sum(1 for item in rows if item["상태"] in {"HOLD", "REWORK", "WAIT_QA", "WAIT_EQUIP", "WAIT_MATERIAL"})
-    return {"success": True, "tool_name": "get_wip_status", "data": rows, "summary": f"총 {len(rows)}건, 총 WIP {format_summary_quantity(total)} EA, 대기/홀드 {delayed}건"}
+    return {
+        "success": True,
+        "tool_name": "get_wip_status",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 총 WIP {format_summary_quantity(total)} EA, 대기/홀드 {delayed}건",
+    }
 
 
 RETRIEVAL_TOOL_MAP = {
@@ -308,8 +349,10 @@ RETRIEVAL_TOOL_MAP = {
 
 
 def pick_retrieval_tool(query_text: str) -> str | None:
+    # compact 서비스에서는 복잡한 intent 분류기보다
+    # 읽고 수정하기 쉬운 단순 키워드 라우터를 사용합니다.
     query = str(query_text or "").lower()
-    if any(token in query for token in ["설비", "가동률", "장비", "downtime"]):
+    if any(token in query for token in ["설비", "가동률", "equipment", "downtime"]):
         return "equipment"
     if any(token in query for token in ["wip", "재공", "대기", "hold"]):
         return "wip"

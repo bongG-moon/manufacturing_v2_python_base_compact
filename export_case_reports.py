@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
 from typing import Iterable
@@ -53,35 +53,22 @@ def _flatten_table_html(table_html: str) -> str:
     if not table_html:
         return ""
 
-    if "<tr>" in table_html.lower():
-        rows = re.findall(r"<tr>(.*?)</tr>", table_html, flags=re.IGNORECASE | re.DOTALL)
-        flattened_rows: list[str] = []
-        for row_html in rows:
-            cells = re.findall(r"<t[dh]>(.*?)</t[dh]>", row_html, flags=re.IGNORECASE | re.DOTALL)
-            cleaned = []
-            for cell in cells:
-                text = re.sub(r"<[^>]+>", " ", cell)
-                text = _clean_text(text)
-                if text:
-                    cleaned.append(text)
-            if cleaned:
-                flattened_rows.append(" | ".join(cleaned))
-        return "\n".join(flattened_rows)
+    rows = re.findall(r"<tr>(.*?)</tr>", table_html, flags=re.IGNORECASE | re.DOTALL)
+    if not rows:
+        return _clean_text(table_html)
 
-    plain_text = _clean_text(table_html)
-    if not plain_text:
-        return ""
-
-    chunks = re.split(r"(?=20\d{6})", plain_text)
-    chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
-    if len(chunks) <= 1:
-        return plain_text
-
-    header = chunks[0]
-    data_rows = chunks[1:]
-    formatted_rows = [header]
-    formatted_rows.extend(data_rows[:5])
-    return "\n".join(formatted_rows)
+    flattened_rows: list[str] = []
+    for row_html in rows:
+        cells = re.findall(r"<t[dh]>(.*?)</t[dh]>", row_html, flags=re.IGNORECASE | re.DOTALL)
+        cleaned_cells: list[str] = []
+        for cell in cells:
+            text = re.sub(r"<[^>]+>", " ", cell)
+            text = _clean_text(text)
+            if text:
+                cleaned_cells.append(text)
+        if cleaned_cells:
+            flattened_rows.append(" | ".join(cleaned_cells))
+    return "\n".join(flattened_rows)
 
 
 def _expected_columns_from_question(question: str) -> list[str]:
@@ -95,8 +82,8 @@ def _expected_columns_from_question(question: str) -> list[str]:
         "tech별": ["TECH"],
         "공정군별": ["공정군"],
         "공정별": ["공정"],
-        "주요불량유형별": ["주요불량유형"],
-        "불량유형별": ["주요불량유형"],
+        "주요 불량 유형별": ["주요불량유형"],
+        "불량 유형별": ["주요불량유형"],
     }
     expected: list[str] = []
     for token, columns in mapping.items():
@@ -109,6 +96,7 @@ def _contains_error_text(text: str) -> bool:
     tokens = [
         "지원하는 조회 또는 분석 범위를 벗어났습니다",
         "질문 분석 중 문제가 발생했습니다",
+        "현재 결과 테이블에 없습니다",
         "Traceback",
         "KeyError",
         "실패",
@@ -126,10 +114,13 @@ def _classify_case(case: CaseRow) -> tuple[str, str]:
     tool = _clean_text(case.tool)
 
     if not tool or tool == "None":
-        return STATUS_NEEDS_WORK, "실행된 tool이 없어서 실제 처리 경로를 확인하기 어렵습니다."
+        return STATUS_NEEDS_WORK, "실행된 tool 정보가 없어 실제 처리 경로를 확인하기 어렵습니다."
+
+    if "현재 결과 테이블에 없습니다" in answer:
+        return STATUS_SUCCESS, "없는 컬럼 요청을 명확하게 안내했습니다."
 
     if _contains_error_text(answer) or _contains_error_text(summary):
-        return STATUS_NEEDS_WORK, "응답이나 요약에 명시적인 오류/실패 문구가 포함되어 있습니다."
+        return STATUS_NEEDS_WORK, "응답 또는 요약에 명시적인 오류/실패 문구가 포함되어 있습니다."
 
     if tool == "analyze_current_data" and not pandas_logic:
         return STATUS_NEEDS_WORK, "후속 분석인데 생성된 pandas 로직이 비어 있습니다."
@@ -138,12 +129,13 @@ def _classify_case(case: CaseRow) -> tuple[str, str]:
     searchable = "\n".join([answer, table_text, pandas_logic])
     for expected in expected_columns:
         if expected not in searchable:
-            return STATUS_AMBIGUOUS, f"질문은 `{expected}` 기준 분석을 요구하지만 결과/로직에서 그 기준이 분명하게 드러나지 않습니다."
+            return STATUS_AMBIGUOUS, f"질문은 `{expected}` 기준 분석을 요구했지만 결과나 로직에서 그 기준이 분명하지 않습니다."
 
-    if "상위" in question and tool == "analyze_current_data" and "head(" not in pandas_logic and "nlargest(" not in pandas_logic:
-        return STATUS_AMBIGUOUS, "질문은 상위 N개를 요구하지만 pandas 로직에서 상위 추출 의도가 명확하지 않습니다."
+    if "상위" in question and tool == "analyze_current_data":
+        if "head(" not in pandas_logic and "nlargest(" not in pandas_logic and "sort_values" not in pandas_logic:
+            return STATUS_AMBIGUOUS, "질문은 상위 N개를 요구했지만 pandas 로직에서 상위 추출 의도가 충분히 드러나지 않습니다."
 
-    return STATUS_SUCCESS, "질문 의도, 실행 tool, 결과 테이블, pandas 로직이 전반적으로 자연스럽게 연결됩니다."
+    return STATUS_SUCCESS, "질문 의도, 실행 tool, 결과 테이블, pandas 로직이 전반적으로 잘 연결됩니다."
 
 
 def _build_export_rows() -> list[ExportRow]:
@@ -233,14 +225,14 @@ def _build_summary_dataframe(export_rows: Iterable[ExportRow]) -> pd.DataFrame:
     ambiguous = sum(1 for row in rows if row.status == STATUS_AMBIGUOUS)
     needs_work = sum(1 for row in rows if row.status == STATUS_NEEDS_WORK)
 
-    summary_rows = [
-        {"구분": "총 케이스", "값": total},
-        {"구분": "성공", "값": success},
-        {"구분": "애매", "값": ambiguous},
-        {"구분": "개선필요", "값": needs_work},
-    ]
-
-    return pd.DataFrame(summary_rows)
+    return pd.DataFrame(
+        [
+            {"구분": "총 케이스", "값": total},
+            {"구분": "성공", "값": success},
+            {"구분": "애매", "값": ambiguous},
+            {"구분": "개선필요", "값": needs_work},
+        ]
+    )
 
 
 def _build_reason_dataframe(export_rows: Iterable[ExportRow]) -> pd.DataFrame:
@@ -307,7 +299,7 @@ def _write_docx() -> bool:
     export_rows = _build_export_rows()
     document = Document()
     document.add_heading("100 Case Test Report", level=1)
-    document.add_paragraph("질문, 답변, 상위 5개 테이블, pandas 로직, 상태 판정과 사유를 한 문서에서 읽기 쉽게 정리한 보고서입니다.")
+    document.add_paragraph("질문, 답변, 상위 5개 테이블, pandas 로직, 상태 판정과 사유를 한 문서에서 보기 쉽게 정리한 보고서입니다.")
 
     document.add_heading("Summary", level=2)
     summary_df = _build_summary_dataframe(export_rows)
@@ -332,9 +324,9 @@ def _write_docx() -> bool:
         document.add_paragraph(f"사유: {row.reason}")
         document.add_paragraph(f"Summary: {row.summary}")
         document.add_paragraph(f"답변 내용: {row.answer}")
-        document.add_paragraph("테이블 상위 5개:")
+        document.add_paragraph("테이블 상위 5개")
         document.add_paragraph(row.table_top5 or "결과 없음")
-        document.add_paragraph("Pandas Logic:")
+        document.add_paragraph("Pandas Logic")
         document.add_paragraph(row.pandas_logic or "-")
 
     document.save(DOCX_PATH)

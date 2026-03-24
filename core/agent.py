@@ -13,6 +13,7 @@ from .parameter_resolver import resolve_required_params
 
 QueryMode = Literal["retrieval", "followup_transform"]
 
+# UI와 리포트에서 공통으로 보여 줄 "실제 반영 조건" 목록입니다.
 APPLIED_PARAM_FIELDS = [
     "date",
     "process_name",
@@ -27,13 +28,9 @@ APPLIED_PARAM_FIELDS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Chat / context helpers
-# ---------------------------------------------------------------------------
-
-
-def _format_chat_history(chat_history: List[Dict[str, str]], max_messages: int = 6) -> str:
-    # Only recent turns are passed to prompts to keep context small and readable.
+def _build_recent_chat_text(chat_history: List[Dict[str, str]], max_messages: int = 6) -> str:
+    # 최근 대화 몇 개만 프롬프트에 넣어야
+    # 비용을 줄이고 현재 질문과 관련된 맥락만 유지할 수 있습니다.
     if not chat_history:
         return "(이전 대화 없음)"
 
@@ -45,8 +42,9 @@ def _format_chat_history(chat_history: List[Dict[str, str]], max_messages: int =
     return "\n".join(lines) if lines else "(이전 대화 없음)"
 
 
-def _extract_current_data_columns(current_data: Dict[str, Any] | None) -> List[str]:
-    # Follow-up parameter resolution uses the current table schema as a hint.
+def _get_current_table_columns(current_data: Dict[str, Any] | None) -> List[str]:
+    # 후속 질문은 현재 표에 있는 컬럼으로만 분석할 수 있으므로
+    # 먼저 현재 표의 컬럼 목록을 추출합니다.
     if not isinstance(current_data, dict):
         return []
 
@@ -62,28 +60,28 @@ def _extract_current_data_columns(current_data: Dict[str, Any] | None) -> List[s
 
 
 def _has_current_data(current_data: Dict[str, Any] | None) -> bool:
+    # current_data가 있으면 후속 pandas 분석이 가능하다는 뜻입니다.
     return bool(isinstance(current_data, dict) and isinstance(current_data.get("data"), list) and current_data.get("data"))
 
 
-def _pick_applied_params(extracted_params: Dict[str, Any]) -> Dict[str, Any]:
+def _collect_applied_params(extracted_params: Dict[str, Any]) -> Dict[str, Any]:
+    # 내부적으로 많은 정보가 오가더라도
+    # 사용자에게는 실제 반영된 조건만 보여 주는 것이 이해하기 쉽습니다.
     return {field: extracted_params.get(field) for field in APPLIED_PARAM_FIELDS if extracted_params.get(field)}
 
 
-# ---------------------------------------------------------------------------
-# Routing helpers
-# ---------------------------------------------------------------------------
-
-
-def _looks_like_fresh_retrieval(query_text: str) -> bool:
-    # Decide whether the user is asking for new source data or transforming the current table.
+def _looks_like_new_data_request(query_text: str) -> bool:
+    # 질문이 "새 데이터를 가져오려는 것인지" 아니면
+    # "현재 표를 다시 가공하려는 것인지"를 가볍게 판단하는 1차 규칙입니다.
     normalized = normalize_text(query_text)
     retrieval_tokens = ["생산", "목표", "불량", "설비", "가동률", "재공", "wip", "오늘", "어제", "조회"]
-    transform_tokens = ["상위", "하위", "그룹", "그룹화", "정렬", "비교", "요약", "필터", "기준", "별로"]
+    transform_tokens = ["상위", "하위", "그룹", "정렬", "비교", "요약", "필터", "기준", "별로"]
     return any(token in normalized for token in retrieval_tokens) and not any(token in normalized for token in transform_tokens)
 
 
 def _prune_followup_params(user_input: str, extracted_params: Dict[str, Any]) -> Dict[str, Any]:
-    # Follow-up analysis should not blindly carry every old filter into the new table view.
+    # 후속 분석에서는 예전 조회 조건을 무조건 다시 적용하지 않습니다.
+    # 사용자가 명시적으로 필터를 요청한 경우에만 해당 조건을 유지합니다.
     normalized = normalize_text(user_input)
     cleaned = dict(extracted_params or {})
     filter_fields = ["process_name", "product_name", "line_name", "mode", "den", "tech", "lead", "mcp_no"]
@@ -96,18 +94,18 @@ def _prune_followup_params(user_input: str, extracted_params: Dict[str, Any]) ->
     return cleaned
 
 
-def _resolve_query_mode(user_input: str, current_data: Dict[str, Any] | None) -> QueryMode:
-    if _has_current_data(current_data) and not _looks_like_fresh_retrieval(user_input):
+def _choose_query_mode(user_input: str, current_data: Dict[str, Any] | None) -> QueryMode:
+    # 메인 분기 규칙:
+    # - current_data가 있고 새 조회처럼 안 보이면 후속 분석
+    # - 그 외에는 새 조회
+    if _has_current_data(current_data) and not _looks_like_new_data_request(user_input):
         return "followup_transform"
     return "retrieval"
 
 
-# ---------------------------------------------------------------------------
-# Response text helpers
-# ---------------------------------------------------------------------------
-
-
 def _format_result_preview(result: Dict[str, Any], max_rows: int = 5) -> str:
+    # 전체 데이터를 프롬프트에 넣으면 너무 길어지므로
+    # 앞부분 몇 줄만 보기 좋은 형태로 잘라서 사용합니다.
     rows = result.get("data", [])
     if not isinstance(rows, list) or not rows:
         return "없음"
@@ -117,13 +115,15 @@ def _format_result_preview(result: Dict[str, Any], max_rows: int = 5) -> str:
 
 
 def _build_response_prompt(user_input: str, result: Dict[str, Any], chat_history: List[Dict[str, str]]) -> str:
+    # LLM이 "원본 전체 데이터"가 아니라
+    # "지금 화면에 있는 결과 테이블"을 기준으로 답하도록 강하게 유도합니다.
     return f"""사용자에게 제조 데이터 분석 결과를 설명해 주세요.
 
 사용자 질문:
 {user_input}
 
 최근 대화:
-{_format_chat_history(chat_history)}
+{_build_recent_chat_text(chat_history)}
 
 현재 결과 요약:
 {result.get('summary', '')}
@@ -140,16 +140,16 @@ def _build_response_prompt(user_input: str, result: Dict[str, Any], chat_history
 규칙:
 1. 반드시 현재 결과 테이블 기준으로만 설명하세요.
 2. 원본 전체 데이터 기준처럼 말하지 마세요.
-3. 사용자의 요청이 그룹화, 상위 N, 정렬이라면 그 결과 구조를 짚어 주세요.
+3. 그룹화, 상위 N, 정렬 요청이면 그 결과 구조를 직접 설명하세요.
 4. preview에 이미 K 또는 M 단위가 붙은 값은 다시 단위를 덧붙이지 마세요.
-5. 예를 들어 2.8K를 2,800K처럼 다시 쓰면 안 됩니다.
-6. 수량 컬럼은 필요한 경우 K 또는 M 단위로 자연스럽게 표현해도 됩니다.
-7. 3~5문장 정도로 짧고 명확하게 답하세요.
+5. 예를 들어 2.8K를 2,800K처럼 쓰면 안 됩니다.
+6. 3~5문장 정도로 짧고 명확하게 답하세요.
 """
 
 
 def _generate_response(user_input: str, result: Dict[str, Any], chat_history: List[Dict[str, str]]) -> str:
-    # One response function keeps retrieval and follow-up answers in the same style.
+    # 조회와 후속 분석 모두 같은 스타일로 답하도록
+    # 응답 생성 로직을 한 함수로 통일했습니다.
     prompt = _build_response_prompt(user_input, result, chat_history)
     try:
         llm = get_llm()
@@ -163,18 +163,13 @@ def _generate_response(user_input: str, result: Dict[str, Any], chat_history: Li
         return f"{result.get('summary', '결과를 확인했습니다.')} 아래 표를 함께 확인해 주세요."
 
 
-# ---------------------------------------------------------------------------
-# Execution helpers
-# ---------------------------------------------------------------------------
-
-
 def _run_followup_analysis(
     user_input: str,
     chat_history: List[Dict[str, str]],
     current_data: Dict[str, Any],
     extracted_params: Dict[str, Any],
 ) -> Dict[str, Any]:
-    # Follow-up means: transform the current dataframe and explain the transformed result.
+    # 이 경로는 "현재 테이블을 다시 가공"하는 후속 분석 전용 경로입니다.
     cleaned_params = _prune_followup_params(user_input, extracted_params)
     result = execute_analysis_query(
         query_text=user_input,
@@ -184,7 +179,7 @@ def _run_followup_analysis(
 
     if result.get("success"):
         result["original_tool_name"] = current_data.get("original_tool_name") or current_data.get("tool_name", "")
-        result["applied_params"] = _pick_applied_params(cleaned_params)
+        result["applied_params"] = _collect_applied_params(cleaned_params)
 
     return {
         "response": _generate_response(user_input, result, chat_history) if result.get("success") else result.get("error_message", "분석에 실패했습니다."),
@@ -201,7 +196,8 @@ def _run_retrieval(
     current_data: Dict[str, Any] | None,
     extracted_params: Dict[str, Any],
 ) -> Dict[str, Any]:
-    # Retrieval means: pick a source dataset first, then fetch fresh rows.
+    # 이 경로는 생산/목표/불량/설비/WIP 중 어떤 원본 데이터를
+    # 새로 가져와야 하는지 결정하고 실행합니다.
     retrieval_key = pick_retrieval_tool(user_input)
     if not retrieval_key:
         return {
@@ -224,7 +220,7 @@ def _run_retrieval(
     result = RETRIEVAL_TOOL_MAP[retrieval_key](extracted_params)
     if result.get("success"):
         result["original_tool_name"] = result.get("tool_name")
-        result["applied_params"] = _pick_applied_params(extracted_params)
+        result["applied_params"] = _collect_applied_params(extracted_params)
 
     return {
         "response": _generate_response(user_input, result, chat_history) if result.get("success") else result.get("error_message", "조회에 실패했습니다."),
@@ -235,33 +231,28 @@ def _run_retrieval(
     }
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
-
 def run_agent(
     user_input: str,
     chat_history: List[Dict[str, str]] | None = None,
     context: Dict[str, Any] | None = None,
     current_data: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    # Main pipeline:
-    # 1) resolve filters
-    # 2) decide retrieval vs follow-up
-    # 3) run the selected branch
+    # 메인 파이프라인
+    # 1) 질문에서 필수 조건 추출
+    # 2) retrieval / follow-up 모드 결정
+    # 3) 선택된 경로 실행
     chat_history = chat_history or []
     context = context or {}
     current_data = current_data if isinstance(current_data, dict) else None
 
     extracted_params = resolve_required_params(
         user_input=user_input,
-        chat_history_text=_format_chat_history(chat_history),
-        current_data_columns=_extract_current_data_columns(current_data),
+        chat_history_text=_build_recent_chat_text(chat_history),
+        current_data_columns=_get_current_table_columns(current_data),
         context=context,
     )
 
-    mode = _resolve_query_mode(user_input, current_data)
+    mode = _choose_query_mode(user_input, current_data)
     if mode == "followup_transform" and isinstance(current_data, dict):
         return _run_followup_analysis(user_input, chat_history, current_data, extracted_params)
 

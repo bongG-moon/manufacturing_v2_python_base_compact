@@ -24,6 +24,8 @@ def _extract_text_from_response(content: Any) -> str:
 
 
 def _parse_json_block(text: str) -> Dict[str, Any]:
+    # LLM이 JSON 외의 설명을 섞어 줄 수 있으므로
+    # 실제 사용할 때는 중괄호 블록만 잘라서 파싱합니다.
     cleaned = str(text or "").strip()
     if "```json" in cleaned:
         cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0]
@@ -40,6 +42,8 @@ def _parse_json_block(text: str) -> Dict[str, Any]:
 
 
 def _inherit_from_context(extracted_params: RequiredParams, context: Dict[str, Any] | None) -> RequiredParams:
+    # 사용자가 "불량 보여줘"처럼 짧게 물어도
+    # 이전 턴의 날짜/제품 조건을 이어받아 자연스럽게 동작하게 하는 부분입니다.
     if not isinstance(context, dict):
         return extracted_params
     if not extracted_params.get("date") and context.get("date"):
@@ -65,6 +69,7 @@ def _inherit_from_context(extracted_params: RequiredParams, context: Dict[str, A
 
 
 def _fallback_date(text: str) -> str | None:
+    # LLM 추출이 실패하더라도 오늘/어제 정도는 규칙 기반으로 처리합니다.
     lower = str(text or "").lower()
     now = datetime.now()
     if "오늘" in lower or "today" in lower:
@@ -80,6 +85,8 @@ def resolve_required_params(
     current_data_columns: List[str],
     context: Dict[str, Any] | None = None,
 ) -> RequiredParams:
+    # 여기서는 "데이터를 가져오기 위한 최소 조건"만 추출합니다.
+    # 실제 pandas 후속 분석 코드는 별도 엔진이 맡습니다.
     today = datetime.now().strftime("%Y%m%d")
     domain_prompt = build_domain_knowledge_prompt()
     prompt = f"""You are extracting retrieval parameters for a manufacturing data assistant.

@@ -4,13 +4,14 @@ from typing import Any, Dict, List, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .analysis_contracts import PreprocessPlan
-from .analysis_schema import dataset_profile
+from .analysis_helpers import dataset_profile
 from .config import get_llm
 from .domain_knowledge import build_domain_knowledge_prompt
 
 
 def extract_text_from_response(content: Any) -> str:
-    # LLM SDKs can return either plain text or a list of text parts.
+    # 모델 SDK가 문자열 또는 파트 리스트를 반환할 수 있으므로
+    # 이후 로직이 항상 문자열만 다루도록 여기서 통일합니다.
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -25,7 +26,8 @@ def extract_text_from_response(content: Any) -> str:
 
 
 def extract_json_payload(text: str) -> Dict[str, Any]:
-    # We ask the model for JSON, but still defensively strip code fences.
+    # 모델이 JSON 앞뒤로 설명이나 코드펜스를 붙여도
+    # 실제 JSON 블록만 잘라서 파싱하기 위한 함수입니다.
     cleaned = str(text or "").strip()
     if "```json" in cleaned:
         cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0]
@@ -49,8 +51,9 @@ def build_llm_prompt(
     retry_error: str = "",
     previous_code: str = "",
 ) -> str:
-    # The prompt gives the model everything it needs to write pandas directly:
-    # user question, current schema, sample rows, and domain hints.
+    # 후속 분석의 핵심 프롬프트입니다.
+    # 현재 컬럼, 샘플 행, 도메인 지식을 함께 주고
+    # LLM이 직접 pandas 코드를 작성하도록 유도합니다.
     profile = dataset_profile(data)
     retry_section = ""
     if retry_error:
@@ -116,7 +119,7 @@ def build_llm_plan(
     retry_error: str = "",
     previous_code: str = "",
 ) -> Tuple[PreprocessPlan | None, str]:
-    # Convert the LLM JSON into one consistent internal plan object.
+    # LLM 응답을 "실행기와 UI가 공통으로 이해할 수 있는 계획 객체"로 변환합니다.
     try:
         llm = get_llm()
         prompt = build_llm_prompt(query_text, data, retry_error=retry_error, previous_code=previous_code)

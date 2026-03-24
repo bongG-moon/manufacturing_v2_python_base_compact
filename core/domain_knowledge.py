@@ -1,10 +1,10 @@
 FILTER_FIELDS = {
     "date": {"field_name": "날짜", "description": "작업일자 (YYYYMMDD)"},
     "process": {"field_name": "공정", "description": "제조 공정 또는 공정군"},
-    "mode": {"field_name": "MODE", "description": "제품/품목 계열"},
+    "mode": {"field_name": "MODE", "description": "제품 / 품목 계열"},
     "den": {"field_name": "DEN", "description": "메모리 용량 또는 밀도"},
     "tech": {"field_name": "TECH", "description": "패키지 기술"},
-    "lead": {"field_name": "LEAD", "description": "Lead/Ball 수"},
+    "lead": {"field_name": "LEAD", "description": "Lead / Ball 수"},
     "mcp_no": {"field_name": "MCP_NO", "description": "제품 또는 프로그램 코드"},
 }
 
@@ -61,11 +61,11 @@ MODE_GROUPS = {
 }
 
 DEN_GROUPS = {
-    "8Gb": {"synonyms": ["8gb", "8 Gb"], "actual_values": ["8Gb"]},
-    "16Gb": {"synonyms": ["16gb", "16 Gb"], "actual_values": ["16Gb"]},
-    "32Gb": {"synonyms": ["32gb", "32 Gb"], "actual_values": ["32Gb"]},
-    "64Gb": {"synonyms": ["64gb", "64 Gb"], "actual_values": ["64Gb"]},
-    "128Gb": {"synonyms": ["128gb", "128 Gb"], "actual_values": ["128Gb"]},
+    "8Gb": {"synonyms": ["8gb", "8 gb"], "actual_values": ["8Gb"]},
+    "16Gb": {"synonyms": ["16gb", "16 gb"], "actual_values": ["16Gb"]},
+    "32Gb": {"synonyms": ["32gb", "32 gb"], "actual_values": ["32Gb"]},
+    "64Gb": {"synonyms": ["64gb", "64 gb"], "actual_values": ["64Gb"]},
+    "128Gb": {"synonyms": ["128gb", "128 gb"], "actual_values": ["128Gb"]},
 }
 
 TECH_GROUPS = {
@@ -113,5 +113,5 @@ def build_domain_knowledge_prompt() -> str:
     lines.append("- 공정군으로 질문하면 actual_values 전체를 필터 값으로 사용한다.")
     lines.append("- 개별 공정/스텝명으로 질문하면 해당 값만 사용한다.")
     lines.append("- 명시되지 않은 필드는 null로 둔다.")
-    lines.append("- 후속 분석에서는 현재 테이블 컬럼과 도메인 지식을 함께 사용한다.")
+    lines.append("- 후속 분석에서는 현재 테이블 컬럼과 도메인 지식을 함께 참고한다.")
     return "\n".join(lines)

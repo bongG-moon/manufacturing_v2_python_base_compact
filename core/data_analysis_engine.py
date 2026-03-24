@@ -1,7 +1,7 @@
 from typing import Any, Dict, List
 
 from .analysis_llm import build_llm_plan
-from .analysis_schema import (
+from .analysis_helpers import (
     build_transformation_summary,
     extract_columns,
     find_missing_dimensions,
@@ -13,7 +13,8 @@ from .safe_code_executor import execute_safe_dataframe_code
 
 
 def _execute_plan(plan: Dict[str, Any], data: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # All generated pandas code is funneled through the same safe executor.
+    # 어떤 방식으로 계획이 만들어졌든 실행은 한 곳으로 모읍니다.
+    # 그래야 안전 검증과 오류 처리를 일관되게 관리할 수 있습니다.
     return execute_safe_dataframe_code(str(plan.get("code", "")).strip(), data)
 
 
@@ -24,7 +25,8 @@ def _success_result(
     source_tool_name: str,
     input_rows: int,
 ) -> Dict[str, Any]:
-    # Keep the success payload shape consistent so UI and tests stay simple.
+    # 성공 payload 구조를 고정해 두면
+    # UI와 테스트 코드가 같은 방식으로 결과를 읽을 수 있습니다.
     return {
         "success": True,
         "tool_name": "analyze_current_data",
@@ -50,7 +52,8 @@ def _error_result(
     analysis_logic: str | None = None,
     missing_columns: List[str] | None = None,
 ) -> Dict[str, Any]:
-    # Error payload includes schema hints so the UI can explain failures clearly.
+    # 에러여도 missing_columns, available_columns를 함께 담아 두면
+    # 화면에서 실패 이유를 더 친절하게 설명할 수 있습니다.
     return {
         "success": False,
         "tool_name": "analyze_current_data",
@@ -64,8 +67,9 @@ def _error_result(
     }
 
 
-def _execute_with_retry(query_text: str, data: List[Dict[str, Any]], plan: Dict[str, Any], analysis_logic: str) -> tuple[Dict[str, Any], Dict[str, Any], str]:
-    # The first LLM code may fail. If it does, we retry once with the error message.
+def _execute_with_retry(query_text: str, data: List[Dict[str, Any]], plan: Dict[str, Any], analysis_logic: str):
+    # 첫 번째 LLM 코드가 틀릴 수 있으므로
+    # 실행 오류를 다시 LLM에 보여 주고 한 번 더 재생성합니다.
     executed = _execute_plan(plan, data)
     if executed.get("success") or str(plan.get("source")) != "llm_primary":
         return executed, plan, analysis_logic
@@ -84,7 +88,13 @@ def _execute_with_retry(query_text: str, data: List[Dict[str, Any]], plan: Dict[
 
 
 def execute_analysis_query(query_text: str, data: List[Dict[str, Any]], source_tool_name: str = "") -> Dict[str, Any]:
-    # This function is the follow-up analysis entry point used by the agent.
+    # 후속 pandas 분석의 진입점입니다.
+    # 순서:
+    # 1) 없는 컬럼 요청인지 확인
+    # 2) LLM 계획/코드 생성
+    # 3) 필요 시 fallback
+    # 4) 안전 실행
+    # 5) 성공/실패 payload 반환
     if not data:
         return {
             "success": False,
@@ -96,7 +106,6 @@ def execute_analysis_query(query_text: str, data: List[Dict[str, Any]], source_t
     columns = extract_columns(data)
     missing_dimensions = find_missing_dimensions(query_text, columns)
     if missing_dimensions:
-        # Stop early if the user asks for a column that does not exist.
         return _error_result(
             format_missing_column_message(missing_dimensions, columns),
             columns,
@@ -105,7 +114,6 @@ def execute_analysis_query(query_text: str, data: List[Dict[str, Any]], source_t
 
     plan, analysis_logic = build_llm_plan(query_text, data)
     if plan is None:
-        # Fallback stays intentionally small. The main path should stay LLM-driven.
         plan = minimal_fallback_plan(query_text, data)
         analysis_logic = "minimal_fallback"
 

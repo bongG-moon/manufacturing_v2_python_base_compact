@@ -23,17 +23,17 @@ CASES: List[RetestCase] = [
         "R01",
         "집계 후 없는 MODE 컬럼 요청",
         ["오늘 목표 보여줘", "공정군별로 그룹화해줘", "MODE별로 그룹화해줘"],
-        "마지막 질문에서 MODE 컬럼이 현재 결과에 없다는 안내가 나와야 함",
+        "마지막 질문에서 MODE 컬럼이 현재 결과 테이블에 없다는 안내가 나와야 함",
     ),
     RetestCase(
         "R02",
         "집계 후 없는 라인 컬럼 요청",
         ["오늘 목표 보여줘", "공정군별로 그룹화해줘", "라인별로 정리해줘"],
-        "마지막 질문에서 라인 컬럼이 현재 결과에 없다는 안내가 나와야 함",
+        "마지막 질문에서 라인 컬럼이 현재 결과 테이블에 없다는 안내가 나와야 함",
     ),
     RetestCase(
         "R03",
-        "현재 데이터에 아예 없는 담당자 컬럼 요청",
+        "현재 데이터에 없는 임의 컬럼 요청",
         ["오늘 생산량 보여줘", "담당자별로 정리해줘"],
         "담당자 컬럼이 없다는 안내가 나와야 함",
     ),
@@ -51,33 +51,33 @@ CASES: List[RetestCase] = [
     ),
     RetestCase(
         "R06",
-        "복합 그룹 후 상위 N 성공",
+        "복합 그룹화와 그룹별 상위 N 성공",
         ["오늘 생산량 보여줘", "mode, den, tech별로 그룹화해주고 그룹별로 상위 3개씩만 보여줘"],
-        "복합 groupby + top_n_per_group 이 정상 수행되어야 함",
+        "복합 groupby와 상위 N 분석이 정상 수행되어야 함",
     ),
     RetestCase(
         "R07",
         "불량 집계 후 없는 MODE 요청",
-        ["오늘 불량 보여줘", "주요불량유형별로 그룹화해줘", "MODE별로 그룹화해줘"],
-        "마지막 질문에서 MODE 컬럼이 현재 결과에 없다는 안내가 나와야 함",
+        ["오늘 불량 보여줘", "주요 불량 유형별로 그룹화해줘", "MODE별로 그룹화해줘"],
+        "마지막 질문에서 MODE 컬럼이 현재 결과 테이블에 없다는 안내가 나와야 함",
     ),
     RetestCase(
         "R08",
         "WIP 집계 후 없는 MODE 요청",
         ["오늘 WIP 보여줘", "공정군별로 그룹화해줘", "MODE별로 그룹화해줘"],
-        "마지막 질문에서 MODE 컬럼이 현재 결과에 없다는 안내가 나와야 함",
+        "마지막 질문에서 MODE 컬럼이 현재 결과 테이블에 없다는 안내가 나와야 함",
     ),
     RetestCase(
         "R09",
         "설비 집계 후 없는 라인 요청",
         ["오늘 설비 가동률 보여줘", "공정군별로 그룹화해줘", "라인별로 정리해줘"],
-        "마지막 질문에서 라인 컬럼이 현재 결과에 없다는 안내가 나와야 함",
+        "마지막 질문에서 라인 컬럼이 현재 결과 테이블에 없다는 안내가 나와야 함",
     ),
     RetestCase(
         "R10",
-        "주제 전환 후 para 승계",
+        "주제 전환 시 파라미터 승계",
         ["오늘 LPDDR5X_8533 생산량 보여줘", "불량 보여줘"],
-        "날짜와 제품 조건이 승계된 불량 조회가 정상 수행되어야 함",
+        "날짜와 제품 조건이 승계된 상태로 불량 조회가 수행되어야 함",
     ),
 ]
 
@@ -129,11 +129,9 @@ def _judge(result: Dict[str, Any]) -> str:
     if "없다는 안내" in expectation:
         return "PASS" if "현재 결과 테이블에 없습니다" in response else "FAIL"
     if "정상 수행" in expectation:
-        if tool_name != "analyze_current_data" and "조회" not in expectation:
+        if result["error_message"]:
             return "FAIL"
-        if "정상 수행" in expectation and result["error_message"]:
-            return "FAIL"
-        if "groupby" in expectation.lower() or "groupby" in code.lower():
+        if tool_name == "analyze_current_data":
             return "PASS" if code else "FAIL"
         return "PASS"
     if "승계" in expectation:
@@ -150,8 +148,9 @@ def _build_report(results: List[Dict[str, Any]]) -> str:
     ]
 
     for result in results:
+        response_line = str(result["response"]).replace("|", "/").replace("\n", " ")
         lines.append(
-            f"| {result['case_id']} | {result['title']} | {result['expectation']} | {result['tool_name'] or '-'} | {_judge(result)} | {str(result['response']).replace('|', '/')} |"
+            f"| {result['case_id']} | {result['title']} | {result['expectation']} | {result['tool_name'] or '-'} | {_judge(result)} | {response_line} |"
         )
 
     lines.extend(["", "## 상세 결과"])

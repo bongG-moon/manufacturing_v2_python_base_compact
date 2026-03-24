@@ -47,10 +47,8 @@ class MainTableParser(HTMLParser):
         elif self.table_depth == 1 and tag in {"td", "th"} and self.current_main_row is not None:
             self.current_cell = []
             self.capture_cell = True
-        elif self.capture_cell and self.current_cell is not None:
-            # Preserve nested table/code blocks as text-ish HTML markers where useful.
-            if tag == "pre":
-                self.current_cell.append("\n")
+        elif self.capture_cell and self.current_cell is not None and tag == "pre":
+            self.current_cell.append("\n")
 
     def handle_endtag(self, tag):
         if not self.main_table_started:
@@ -90,10 +88,6 @@ def load_cases() -> List[CaseRow]:
     return rows
 
 
-def has_suspicious_units(text: str) -> bool:
-    return bool(re.search(r"\b\d{4,}K\b|\b\d{4,}M\b", text))
-
-
 def expected_column_from_question(question: str) -> str | None:
     mapping = {
         "라인별": "라인",
@@ -105,7 +99,7 @@ def expected_column_from_question(question: str) -> str | None:
         "tech별": "TECH",
         "공정군별": "공정군",
         "공정별": "공정",
-        "주요불량유형별": "주요불량유형",
+        "주요 불량 유형별": "주요불량유형",
     }
     for token, column in mapping.items():
         if token in question:
@@ -116,13 +110,15 @@ def expected_column_from_question(question: str) -> str | None:
 def classify_case(row: CaseRow) -> str:
     if row.tool in {"", "None"}:
         return "개선필요"
-    if "실패" in row.answer or "실패" in row.summary:
+    if "실패" in row.answer or "실패" in row.summary or "오류" in row.answer:
         return "개선필요"
+    if "현재 결과 테이블에 없습니다" in row.answer:
+        return "성공"
+
     expected = expected_column_from_question(row.question)
-    if expected and row.pandas_logic not in {"", "-"} and expected not in row.pandas_logic and expected not in row.answer:
-        return "애매"
-    if has_suspicious_units(row.answer):
-        return "애매"
+    if expected and row.pandas_logic not in {"", "-"}:
+        if expected not in row.pandas_logic and expected not in row.answer and expected not in row.table_html:
+            return "애매"
     return "성공"
 
 
@@ -139,12 +135,12 @@ def summarize_cases(rows: List[CaseRow]) -> str:
         f"- 애매: {status_counter['애매']}",
         f"- 개선필요: {status_counter['개선필요']}",
         "",
-        "## 도구별 분포",
+        "## Tool 분포",
     ]
     for tool, count in tool_counter.most_common():
         lines.append(f"- {tool}: {count}")
 
-    lines.extend(["", "## 시나리오별 분포"])
+    lines.extend(["", "## 시나리오 분포"])
     for scenario, count in scenario_counter.items():
         lines.append(f"- {scenario}: {count}")
 
@@ -171,22 +167,23 @@ def quality_review(rows: List[CaseRow]) -> str:
 
     for row in rows:
         expected = expected_column_from_question(row.question)
-        if expected and row.pandas_logic not in {"", "-"} and expected not in row.pandas_logic and expected not in row.answer:
-            issues["질문 의도와 다른 그룹 기준"].append(row)
-        if has_suspicious_units(row.answer):
-            issues["자연어 답변의 단위 표현 어색함"].append(row)
-        if row.tool == "analyze_current_data" and row.pandas_logic in {"", "-"}:
-            issues["후속 분석인데 pandas 로직 없음"].append(row)
+        if expected and row.pandas_logic not in {"", "-"}:
+            if expected not in row.pandas_logic and expected not in row.answer and expected not in row.table_html:
+                issues["질문 의도와 다른 그룹 기준"].append(row)
+        if row.tool == "analyze_current_data" and row.pandas_logic in {"", "-"} and "현재 결과 테이블에 없습니다" not in row.answer:
+            issues["후속 분석인데 pandas 로직이 없음"].append(row)
+        if "실패" in row.answer or "오류" in row.answer:
+            issues["응답에 오류 문구 포함"].append(row)
 
     lines = [
         "# 100 Case Quality Review",
         "",
-        "이 문서는 실패는 아니지만 품질이 어색하거나 추가 보정이 필요한 케이스를 정리한 문서입니다.",
+        "이 문서는 실패는 아니지만 해석이 애매하거나 추가 보정이 필요한 케이스를 정리한 문서입니다.",
     ]
 
     if not issues:
         lines.append("")
-        lines.append("- 명확한 품질 이슈를 자동 분류 기준으로는 찾지 못했습니다.")
+        lines.append("- 명확한 문제를 자동 기준으로 찾지 못했습니다.")
         return "\n".join(lines)
 
     for issue, cases in issues.items():
@@ -205,9 +202,9 @@ def quality_review(rows: List[CaseRow]) -> str:
             lines.append(f"  - Answer Preview: {row.answer[:220]}")
 
     lines.extend(["", "## 해석 가이드"])
-    lines.append("- `성공`: 질문 의도, tool 선택, 후속 분석 흐름이 대체로 자연스러운 케이스")
-    lines.append("- `애매`: 실패는 아니지만 그룹 기준이나 단위 표현이 질문 의도와 완전히 맞지 않을 가능성이 있는 케이스")
-    lines.append("- `개선필요`: 라우팅 실패, 실행 실패, 또는 응답이 명확히 부정확한 케이스")
+    lines.append("- `성공`: 질문 의도, tool 선택, 후속 분석 흐름이 전반적으로 자연스러운 케이스")
+    lines.append("- `애매`: 실패는 아니지만 그룹 기준이나 해석 결과가 질문 의도와 완전히 맞는지 검토가 필요한 케이스")
+    lines.append("- `개선필요`: 실행 실패, 오류 문구, 또는 pandas 분석 자체가 충분히 생성되지 않은 케이스")
     return "\n".join(lines)
 
 

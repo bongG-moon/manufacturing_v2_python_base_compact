@@ -46,8 +46,6 @@ SAFE_BUILTINS = {
 
 
 def _has_result_assignment(tree: ast.AST) -> bool:
-    # We require a real `result = ...` assignment so the caller always knows
-    # which dataframe should be returned to the UI.
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
@@ -60,7 +58,8 @@ def _has_result_assignment(tree: ast.AST) -> bool:
 
 
 def validate_python_code(code: str) -> Tuple[bool, str | None]:
-    # This validator is the safety gate before executing LLM-generated pandas code.
+    # LLM이 생성한 코드를 그대로 실행하면 위험하므로,
+    # import, 파일 접근, 특수 속성 접근 등을 먼저 막습니다.
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
@@ -75,13 +74,14 @@ def validate_python_code(code: str) -> Tuple[bool, str | None]:
             return False, "dunder 속성 접근은 허용되지 않습니다."
 
     if not _has_result_assignment(tree):
-        return False, "pandas 코드에는 `result = ...` 할당이 필요합니다."
+        return False, "pandas 코드는 `result = ...` 할당이 필요합니다."
 
     return True, None
 
 
 def execute_safe_dataframe_code(code: str, data: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # Convert raw rows into a dataframe, run validated code, then convert back to rows.
+    # 문자열 형태의 pandas 코드를 실제로 실행하는 곳입니다.
+    # 단, validate_python_code를 통과한 코드만 실행합니다.
     ok, error = validate_python_code(code)
     if not ok:
         return {"success": False, "error_message": error, "data": []}
