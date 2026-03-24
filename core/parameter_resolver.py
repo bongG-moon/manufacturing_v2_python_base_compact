@@ -34,7 +34,7 @@ def _parse_json_block(text: str) -> Dict[str, Any]:
     if start == -1 or end == -1 or end <= start:
         return {}
     try:
-        return json.loads(cleaned[start:end + 1])
+        return json.loads(cleaned[start : end + 1])
     except Exception:
         return {}
 
@@ -51,7 +51,15 @@ def _inherit_from_context(extracted_params: RequiredParams, context: Dict[str, A
         if not context.get(field):
             continue
         extracted_params[field] = context[field]
-        inherited_key = "process_inherited" if field == "process_name" else "product_inherited" if field == "product_name" else "line_inherited" if field == "line_name" else f"{field}_inherited"
+        inherited_key = (
+            "process_inherited"
+            if field == "process_name"
+            else "product_inherited"
+            if field == "product_name"
+            else "line_inherited"
+            if field == "line_name"
+            else f"{field}_inherited"
+        )
         extracted_params[inherited_key] = True
     return extracted_params
 

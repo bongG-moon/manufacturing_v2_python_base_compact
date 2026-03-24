@@ -49,7 +49,9 @@ def _prune_followup_params(user_input: str, extracted_params: Dict[str, Any]) ->
     normalized = normalize_text(user_input)
     cleaned = dict(extracted_params or {})
     filter_fields = ["process_name", "product_name", "line_name", "mode", "den", "tech", "lead", "mcp_no"]
-    explicit_filter_intent = any(token in normalized for token in ["만", "필터", "조건", "공정", "라인", "mode", "den", "tech", "lead", "mcp"])
+    explicit_filter_intent = any(
+        token in normalized for token in ["만", "필터", "조건", "공정", "라인", "mode", "den", "tech", "lead", "mcp"]
+    )
     if not explicit_filter_intent:
         for field in filter_fields:
             cleaned[field] = None
@@ -87,8 +89,8 @@ def _generate_response(user_input: str, result: Dict[str, Any], chat_history: Li
 규칙:
 1. 반드시 현재 결과 테이블 기준으로만 설명하세요.
 2. 원본 전체 데이터 기준처럼 말하지 마세요.
-3. 사용자의 요청이 그룹화/상위 N/정렬이면 그 결과 구조를 짧게 설명하세요.
-4. 3~5문장 정도로 짧게 답하세요.
+3. 사용자의 요청이 그룹화, 상위 N, 정렬이라면 그 결과 구조를 짚어 주세요.
+4. 3~5문장 정도로 짧고 명확하게 답하세요.
 """
     try:
         llm = get_llm()
@@ -99,7 +101,7 @@ def _generate_response(user_input: str, result: Dict[str, Any], chat_history: Li
             return "\n".join(str(item.get("text", "")) if isinstance(item, dict) else str(item) for item in response.content)
         return str(response.content)
     except Exception:
-        return f"{result.get('summary', '결과를 확인했습니다.')} 아래 표를 확인해 주세요."
+        return f"{result.get('summary', '결과를 확인했습니다.')} 아래 표를 함께 확인해 주세요."
 
 
 def run_agent(

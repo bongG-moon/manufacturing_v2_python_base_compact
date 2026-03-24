@@ -14,10 +14,11 @@ DIMENSION_ALIAS_MAP = {
     "공정": {"공정", "process"},
     "라인": {"라인", "line"},
     "MODE": {"mode", "모드", "제품"},
-    "DEN": {"den", "density", "밀도"},
+    "DEN": {"den", "density", "용량"},
     "TECH": {"tech", "기술"},
     "LEAD": {"lead"},
     "MCP_NO": {"mcp", "mcp_no"},
+    "공정군": {"공정군", "process family", "family"},
 }
 
 
@@ -56,7 +57,7 @@ def _extract_json_payload(text: str) -> Dict[str, Any]:
     if start == -1 or end == -1 or end <= start:
         return {}
     try:
-        return json.loads(cleaned[start:end + 1])
+        return json.loads(cleaned[start : end + 1])
     except Exception:
         return {}
 
@@ -103,7 +104,7 @@ def _parse_top_n_per_group(text: str) -> int | None:
     normalized = normalize_text(query)
     if not any(token in normalized for token in ["각", "그룹별", "별로", "each"]):
         return None
-    for pattern in [re.compile(r"상위\s*(\d+)\s*개씩"), re.compile(r"하위\s*(\d+)\s*개씩")]:
+    for pattern in [re.compile(r"상위\s*(\d+)\s*개"), re.compile(r"하위\s*(\d+)\s*개")]:
         match = pattern.search(query)
         if match:
             return max(1, min(20, int(match.group(1))))
@@ -116,7 +117,7 @@ def _heuristic_plan(query_text: str, data: List[Dict[str, Any]]) -> PreprocessPl
     group_by_columns = _find_dimension_columns_from_query(query_text, columns)
     top_n = _parse_top_n(query_text, default=5)
     top_n_per_group = _parse_top_n_per_group(query_text)
-    sort_order = "asc" if any(token in normalize_text(query_text) for token in ["하위", "최소", "최저"]) else "desc"
+    sort_order = "asc" if any(token in normalize_text(query_text) for token in ["하위", "최소", "낮은"]) else "desc"
 
     if group_by_columns:
         plan: PreprocessPlan = {
@@ -140,7 +141,7 @@ def _heuristic_plan(query_text: str, data: List[Dict[str, Any]]) -> PreprocessPl
         return plan
 
     return {
-        "intent": "현재 데이터 상위/하위 조회",
+        "intent": "현재 데이터 상위 또는 하위 조회",
         "operations": ["sort", "top_n"],
         "output_columns": columns,
         "sort_by": metric_column,
@@ -162,7 +163,7 @@ Rules:
 - Always assign the final DataFrame to result.
 - No imports, files, network, shell, eval, exec, or OS APIs.
 - Prefer short readable pandas code.
-- If the user asks for group별 상위 N개, express that in both structure fields and code.
+- If the user asks for 그룹별 상위 N개, express that in both structure fields and code.
 
 Dataset profile:
 {json.dumps(profile, ensure_ascii=False)}
@@ -259,37 +260,37 @@ top_n = {top_n!r}
 result = df.groupby(group_cols, dropna=False)[metric_col].sum().reset_index().sort_values(metric_col, ascending=ascending).head(top_n)
 """.strip()
 
-    sort_by = str(plan.get("sort_by", metric_column)).strip() or metric_column
-    return f"result = df.sort_values({sort_by!r}, ascending={ascending!r}).head({int(plan.get('top_n', 5))!r})"
+    sort_by = str(plan.get("sort_by") or metric_column).strip()
+    top_n = int(plan.get("top_n", 5))
+    return f"result = df.sort_values({sort_by!r}, ascending={ascending!r}).head({top_n!r})"
 
 
 def execute_analysis_query(query_text: str, data: List[Dict[str, Any]], source_tool_name: str = "") -> Dict[str, Any]:
     if not data:
-        return {"success": False, "tool_name": "analyze_current_data", "source_tool_name": source_tool_name, "error_message": "분석할 데이터가 없습니다.", "data": []}
+        return {"success": False, "tool_name": "analyze_current_data", "error_message": "분석할 현재 데이터가 없습니다.", "data": []}
 
-    plan, plan_source = build_analysis_plan(query_text, data)
-    generated_code = compile_analysis_plan_to_code(plan)
-    execution_result = execute_safe_dataframe_code(data=data, code=generated_code)
-    if not execution_result.get("success"):
+    plan, analysis_logic = build_analysis_plan(query_text, data)
+    code = compile_analysis_plan_to_code(plan)
+    executed = execute_safe_dataframe_code(code, data)
+    if not executed.get("success"):
         return {
             "success": False,
             "tool_name": "analyze_current_data",
-            "source_tool_name": source_tool_name,
-            "error_message": execution_result.get("error_message", "코드 실행에 실패했습니다."),
+            "error_message": executed.get("error_message", "분석 코드 실행에 실패했습니다."),
             "data": [],
             "analysis_plan": plan,
-            "generated_code": generated_code,
+            "analysis_logic": analysis_logic,
+            "generated_code": code,
         }
 
-    result_data = execution_result.get("data", [])
+    result_rows = executed.get("data", [])
     return {
         "success": True,
         "tool_name": "analyze_current_data",
-        "source_tool_name": source_tool_name,
-        "data": result_data,
-        "summary": f"현재 데이터 분석 결과: {len(result_data)}행",
+        "data": result_rows,
+        "summary": f"현재 데이터 분석 결과: {len(result_rows)}행",
         "analysis_plan": plan,
-        "analysis_logic": plan_source,
-        "generated_code": generated_code,
-        "dataset_profile": _dataset_profile(data),
+        "analysis_logic": analysis_logic,
+        "generated_code": code,
+        "source_tool_name": source_tool_name,
     }

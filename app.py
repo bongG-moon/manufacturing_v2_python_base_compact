@@ -35,7 +35,18 @@ def init_session_state() -> None:
 def render_context() -> None:
     context = st.session_state.get("context", {})
     active = []
-    for field, label in [("date", "날짜"), ("process_name", "공정"), ("product_name", "제품"), ("line_name", "라인"), ("mode", "MODE"), ("den", "DEN"), ("tech", "TECH"), ("lead", "LEAD"), ("mcp_no", "MCP")]:
+    label_map = [
+        ("date", "날짜"),
+        ("process_name", "공정"),
+        ("product_name", "제품"),
+        ("line_name", "라인"),
+        ("mode", "MODE"),
+        ("den", "DEN"),
+        ("tech", "TECH"),
+        ("lead", "LEAD"),
+        ("mcp_no", "MCP"),
+    ]
+    for field, label in label_map:
         value = context.get(field)
         if value:
             active.append(f"{label}: {value}")
@@ -60,8 +71,12 @@ def render_tool_results(tool_results: List[Dict[str, Any]]) -> None:
 
             if result.get("tool_name") == "analyze_current_data":
                 analysis_plan = result.get("analysis_plan", {})
-                source_label = {"llm": "LLM이 질의를 해석해 pandas 전처리 계획을 생성했습니다.", "heuristic": "규칙 기반으로 pandas 전처리 계획을 생성했습니다."}.get(str(result.get("analysis_logic", "")).lower(), "")
-                st.markdown("**사고 과정 요약**")
+                source_label = {
+                    "llm": "LLM이 질의를 해석해 pandas 전처리 계획을 생성했습니다.",
+                    "heuristic": "규칙 기반으로 pandas 전처리 계획을 생성했습니다.",
+                }.get(str(result.get("analysis_logic", "")).lower(), "")
+
+                st.markdown("**분석 과정 요약**")
                 if source_label:
                     st.markdown(f"- **계획 생성 방식**: {source_label}")
                 if analysis_plan.get("intent"):
@@ -70,6 +85,7 @@ def render_tool_results(tool_results: List[Dict[str, Any]]) -> None:
                     st.markdown(f"- **적용 단계**: {', '.join(analysis_plan.get('operations', []))}")
                 if analysis_plan.get("output_columns"):
                     st.markdown(f"- **예상 결과 컬럼**: {', '.join(analysis_plan.get('output_columns', []))}")
+
                 st.markdown("**생성된 pandas 코드**")
                 st.code(result.get("generated_code", ""), language="python")
 
@@ -84,7 +100,7 @@ def sync_context(extracted_params: Dict[str, Any]) -> None:
 def main() -> None:
     init_session_state()
     st.title("제조 데이터 경량 채팅 서비스")
-    st.caption("생산/목표/불량/설비/WIP 조회와 current_data 기반 pandas 후속 분석만 포함한 컴팩트 버전")
+    st.caption("생산/목표/불량/설비/WIP 조회와 current_data 기반 pandas 후속 분석만 남긴 compact 버전")
     render_context()
 
     for message in st.session_state.messages:
