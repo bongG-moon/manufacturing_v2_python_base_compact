@@ -1,101 +1,57 @@
-# LLM-First Follow-up Analysis Design
+# LLM-First 후속 분석 설계
 
-## Goal
+이 문서는 초보자용 입문 문서라기보다, 현재 후속 분석 엔진이 왜 이런 구조인지 설명하는 참고 문서입니다.
 
-Turn follow-up analysis into:
+## 한 줄 요약
 
-1. `current_data` is available
-2. LLM writes pandas code directly for the user request
-3. schema checks and safe execution validate that code
-4. if execution fails, retry once with the runtime error
-5. only use a minimal fallback for very basic sorting/top-N cases
+이 서비스의 후속 분석은 가능한 한 `LLM이 pandas 코드를 직접 작성`하도록 하고, 코드는 안전 검사 뒤에 실행합니다.
 
-The main point is to avoid hard-coded analysis templates for cases such as:
+## 왜 이렇게 만들었나
 
-- group by
-- multi-column group by
-- top N per group
-- derived columns
-- custom filtering and sorting
+사용자는 다음처럼 예상하지 못한 질문을 자주 합니다.
 
-## Previous structure
+- 공정군별로 묶어줘
+- 그룹별 상위 3개만 보여줘
+- 목표 대비 달성율 계산해줘
+- 대표 hold 사유를 같이 보여줘
 
-The old flow was hybrid:
+이런 요청을 모두 if문과 고정 템플릿으로 처리하면 코드가 빨리 복잡해집니다.  
+그래서 지금 구조는 “LLM이 코드를 직접 쓰고, 우리는 안전하게 검사하고 실행한다”에 가깝습니다.
 
-- LLM generated a plan
-- internal template code often rebuilt the pandas logic
-- fallback logic handled many structured cases directly
+## 현재 구조
 
-That made the system more stable, but less flexible for unexpected follow-up requests.
+1. `current_data`가 있으면 후속 질문으로 판단합니다.
+2. LLM이 `df` 기준 pandas 코드를 작성합니다.
+3. 실행 전에 컬럼 검사와 안전 검사를 합니다.
+4. 실행이 실패하면 오류 메시지를 바탕으로 한 번 더 재시도합니다.
+5. 그래도 안 되면 아주 작은 fallback만 사용합니다.
 
-## New structure
+## 장점
 
-### 1. LLM code is the primary execution path
+- 예상하지 못한 질문에도 비교적 유연합니다.
+- 새 후속 질문 패턴이 나와도 고정 규칙을 계속 추가하지 않아도 됩니다.
+- 구조가 `질문 -> 코드 생성 -> 안전 실행`으로 단순합니다.
 
-The prompt now tells the model:
+## 단점
 
-- do not invent columns
-- write pandas directly against `df`
-- assign final output to `result`
-- handle grouping, ranking, filtering, sorting, and top-N-per-group directly in code
+- LLM 품질에 영향을 받습니다.
+- 같은 질문도 상황에 따라 약간 다른 코드가 나올 수 있습니다.
 
-### 2. Schema preflight still runs before execution
+## 그래서 남겨둔 안전장치
 
-We still check:
+- 없는 컬럼 요청 감지
+- 안전한 구문만 실행
+- `result = ...` 형태 강제
+- 1회 재시도
+- 분석 요약 정보 표시
 
-- requested dimensions mentioned by the user
-- columns referenced by the generated plan
+## 초보자에게 중요한 점
 
-If a requested column is not present in the current table, the service returns a clear user-facing message instead of a generic failure.
+이 문서를 다 이해할 필요는 없습니다.  
+실제로 수정할 때는 아래 파일만 먼저 보면 됩니다.
 
-### 3. Safe execution is stricter
+- `core/data_analysis_engine.py`
+- `core/analysis_llm.py`
+- `core/safe_code_executor.py`
 
-The executor now:
-
-- blocks unsafe syntax and names
-- requires a real `result = ...` assignment
-- returns structured execution errors
-
-### 4. One retry on failure
-
-If the first LLM-generated code fails at runtime, we send:
-
-- the original question
-- the dataset profile
-- the runtime error
-- the previous code
-
-back to the LLM and ask for corrected code.
-
-### 5. Minimal fallback only
-
-If LLM generation completely fails, the system uses only a minimal fallback:
-
-- choose a metric column
-- sort
-- head(N)
-
-This fallback is intentionally small so the analysis behavior stays mostly LLM-driven.
-
-## Why this is better
-
-- More flexible for unplanned question patterns
-- Better fit for evolving follow-up requests
-- Less need to keep adding special-case logic
-- Still safe enough because schema checks and AST validation remain in place
-
-## Tradeoff
-
-This design depends more on LLM quality than before.
-
-That means:
-
-- more flexibility
-- slightly less deterministic behavior
-
-To balance that, we keep:
-
-- missing-column detection
-- safe AST validation
-- one retry loop
-- transformation summary for debugging
+즉, 후속 분석을 더 잘하게 만들고 싶을 때만 이 문서를 참고하면 충분합니다.

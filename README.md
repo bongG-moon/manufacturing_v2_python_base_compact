@@ -34,13 +34,10 @@ streamlit run app.py
 ## 참고 자료 위치
 
 - `reference_materials/docs/`
-  - 구조 설명
+  - 초보자용 구조 설명
   - 기능 요약
   - 테스트 질문 모음
-- `reference_materials/reports/`
-  - 테스트 결과와 참고 보고서
-- `reference_materials/scripts/`
-  - 테스트/리포트 생성용 보조 스크립트
+  - 고급 참고 문서
 
 ## 초보자용 읽기 순서
 
@@ -50,6 +47,13 @@ streamlit run app.py
 4. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
 5. `app.py`
 6. `core/agent.py`
+
+## 고급 참고 문서
+
+아래 문서는 바로 수정하기보다 구조를 더 깊게 이해하고 싶을 때만 보면 됩니다.
+
+- `reference_materials/docs/LLM_FIRST_ANALYSIS_DESIGN.md`
+- `reference_materials/docs/DOMAIN_SUBAGENT_GUIDE.md`
 
 ## 역할별 파일
 
