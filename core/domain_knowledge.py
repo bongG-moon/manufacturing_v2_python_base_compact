@@ -77,6 +77,14 @@ TECH_GROUPS = {
     "MCP": {"synonyms": ["mcp"], "actual_values": ["MCP"]},
 }
 
+SEMICON_DATASET_HINTS = {
+    "yield": ["수율", "yield", "pass rate", "합격률"],
+    "hold": ["hold", "홀드", "보류 lot", "hold lot"],
+    "scrap": ["scrap", "스크랩", "폐기", "loss cost", "손실비용"],
+    "recipe": ["recipe", "레시피", "공정 조건", "조건값", "parameter", "파라미터"],
+    "lot_trace": ["lot", "lot trace", "lot 이력", "traceability", "로트"],
+}
+
 
 def build_domain_knowledge_prompt() -> str:
     lines = []
@@ -107,6 +115,11 @@ def build_domain_knowledge_prompt() -> str:
     lines.append("TECH 그룹:")
     for group_id, group in TECH_GROUPS.items():
         lines.append(f"- {group_id}: {', '.join(group['synonyms'])} -> {', '.join(group['actual_values'])}")
+
+    lines.append("")
+    lines.append("반도체 운영 데이터셋 관련 용어:")
+    for dataset_name, synonyms in SEMICON_DATASET_HINTS.items():
+        lines.append(f"- {dataset_name}: {', '.join(synonyms)}")
 
     lines.append("")
     lines.append("규칙:")

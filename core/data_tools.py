@@ -92,6 +92,65 @@ WIP_STATUS_BY_FAMILY = {
     "ASSY_PREP": ["QUEUED", "RUNNING", "WAIT_MATERIAL", "WAIT_EQUIP"],
 }
 
+YIELD_FAIL_BINS_BY_FAMILY = {
+    "ASSY_PREP": ["visual_fail", "contamination", "marking_ng"],
+    "DIE_ATTACH": ["die_shift", "void_fail", "attach_miss"],
+    "WIRE_BOND": ["nsop", "wire_open", "bond_lift"],
+    "FLIP_CHIP": ["bump_open", "bridge", "warpage"],
+    "MOLD": ["package_crack", "delamination", "void"],
+    "SINGULATION": ["edge_crack", "chip_out", "burr"],
+    "TEST": ["timing_fail", "leakage_fail", "iddq_fail"],
+    "PACK_OUT": ["label_ng", "tray_mix", "packing_ng"],
+}
+
+HOLD_REASONS_BY_FAMILY = {
+    "ASSY_PREP": ["incoming inspection hold", "material moisture check", "wafer ID mismatch"],
+    "DIE_ATTACH": ["epoxy cure verification", "die attach void review", "recipe approval hold"],
+    "WIRE_BOND": ["bond pull outlier", "capillary replacement hold", "loop height review"],
+    "FLIP_CHIP": ["bump coplanarity review", "reflow profile hold", "underfill void review"],
+    "MOLD": ["package crack review", "mold flash review", "compound trace hold"],
+    "SINGULATION": ["edge crack review", "blade wear inspection", "chip out hold"],
+    "TEST": ["yield review hold", "customer spec check", "retest approval"],
+    "PACK_OUT": ["label verification", "shipping spec hold", "QA final release"],
+}
+
+HOLD_OWNERS = ["PE", "PIE", "QA", "Process", "Equipment", "Customer Quality"]
+
+SCRAP_REASONS_BY_FAMILY = {
+    "ASSY_PREP": ["incoming damage", "contamination", "moisture exposure"],
+    "DIE_ATTACH": ["die crack", "missing die", "epoxy overflow"],
+    "WIRE_BOND": ["wire short", "bond lift", "pad damage"],
+    "FLIP_CHIP": ["bump bridge", "underfill void", "warpage"],
+    "MOLD": ["mold crack", "delamination", "void"],
+    "SINGULATION": ["chip out", "edge crack", "burr"],
+    "TEST": ["electrical fail", "burn-in reject", "leakage fail"],
+    "PACK_OUT": ["packing damage", "label NG", "qty mismatch"],
+}
+
+RECIPE_BASE_BY_FAMILY = {
+    "ASSY_PREP": {"temp_c": 145, "pressure_kpa": 95, "process_time_sec": 420},
+    "DIE_ATTACH": {"temp_c": 168, "pressure_kpa": 112, "process_time_sec": 510},
+    "WIRE_BOND": {"temp_c": 132, "pressure_kpa": 88, "process_time_sec": 360},
+    "FLIP_CHIP": {"temp_c": 238, "pressure_kpa": 126, "process_time_sec": 470},
+    "MOLD": {"temp_c": 176, "pressure_kpa": 140, "process_time_sec": 780},
+    "SINGULATION": {"temp_c": 72, "pressure_kpa": 65, "process_time_sec": 310},
+    "TEST": {"temp_c": 35, "pressure_kpa": 0, "process_time_sec": 900},
+    "PACK_OUT": {"temp_c": 28, "pressure_kpa": 0, "process_time_sec": 260},
+}
+
+METROLOGY_ITEMS_BY_FAMILY = {
+    "ASSY_PREP": ["surface_particles", "wafer_warp"],
+    "DIE_ATTACH": ["die_shift_um", "attach_void_pct"],
+    "WIRE_BOND": ["loop_height_um", "pull_strength_gf"],
+    "FLIP_CHIP": ["bump_height_um", "coplanarity_um"],
+    "MOLD": ["package_thickness_mm", "warpage_um"],
+    "SINGULATION": ["saw_street_um", "edge_chipping_um"],
+    "TEST": ["contact_resistance_mohm", "current_leakage_ua"],
+    "PACK_OUT": ["label_offset_mm", "tray_flatness_mm"],
+}
+
+LOT_STATUS_FLOW = ["WAIT", "RUNNING", "MOVE_OUT", "HOLD", "REWORK", "COMPLETE"]
+
 
 def _stable_seed(date_text: str, offset: int = 0) -> int:
     normalized = str(date_text or "").strip()
@@ -164,6 +223,11 @@ def _iter_valid_process_product_pairs():
         for product in PRODUCTS:
             if spec["family"] in PRODUCT_TECH_FAMILY.get(product["TECH"], set()):
                 yield spec, product
+
+
+def _make_lot_id(date: str, family: str, index: int) -> str:
+    family_code = family.replace("_", "")[:4]
+    return f"LOT-{date[-4:]}-{family_code}-{index:03d}"
 
 
 def get_production_data(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -337,6 +401,193 @@ def get_wip_status(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_yield_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # 수율 데이터는 생산/불량과 함께 자주 비교되므로
+    # tested_qty, pass_qty, yield_rate를 같은 행에 담아 둡니다.
+    date = str(params["date"])
+    random.seed(_stable_seed(date, 5000))
+    rows: List[Dict[str, Any]] = []
+    for spec, product in _iter_valid_process_product_pairs():
+        tested_qty = random.randint(2200, 7800)
+        base_yield = 98.8 if spec["family"] in {"ASSY_PREP", "PACK_OUT"} else 96.5
+        if spec["family"] in {"WIRE_BOND", "TEST"}:
+            base_yield = 94.5
+        yield_rate = round(max(82.0, min(99.9, random.uniform(base_yield - 4.5, base_yield + 1.2))), 2)
+        pass_qty = int(tested_qty * yield_rate / 100)
+        rows.append(
+            {
+                "날짜": date,
+                "공정": spec["공정"],
+                "공정군": spec["family"],
+                "MODE": product["MODE"],
+                "DEN": product["DEN"],
+                "TECH": product["TECH"],
+                "LEAD": product["LEAD"],
+                "MCP_NO": product["MCP_NO"],
+                "라인": spec["라인"],
+                "tested_qty": tested_qty,
+                "pass_qty": pass_qty,
+                "yield_rate": yield_rate,
+                "dominant_fail_bin": random.choice(YIELD_FAIL_BINS_BY_FAMILY[spec["family"]]),
+            }
+        )
+    rows = _apply_common_filters(rows, params)
+    avg_yield = sum(float(item["yield_rate"]) for item in rows) / len(rows) if rows else 0.0
+    return {
+        "success": True,
+        "tool_name": "get_yield_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 평균 수율 {avg_yield:.2f}%",
+    }
+
+
+def get_hold_lot_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # Hold 데이터는 "왜 멈췄는지"를 보여주는 운영성 데이터입니다.
+    # 공정/제품 조건과 함께 hold 이유, owner, 경과 시간을 같이 담습니다.
+    date = str(params["date"])
+    random.seed(_stable_seed(date, 6000))
+    rows: List[Dict[str, Any]] = []
+    for index, (spec, product) in enumerate(_iter_valid_process_product_pairs(), start=1):
+        if random.random() < 0.45:
+            continue
+        rows.append(
+            {
+                "날짜": date,
+                "lot_id": _make_lot_id(date, spec["family"], index),
+                "공정": spec["공정"],
+                "공정군": spec["family"],
+                "MODE": product["MODE"],
+                "DEN": product["DEN"],
+                "TECH": product["TECH"],
+                "MCP_NO": product["MCP_NO"],
+                "라인": spec["라인"],
+                "hold_qty": random.randint(80, 1800),
+                "hold_reason": random.choice(HOLD_REASONS_BY_FAMILY[spec["family"]]),
+                "hold_owner": random.choice(HOLD_OWNERS),
+                "hold_hours": round(random.uniform(1.5, 42.0), 1),
+                "hold_status": random.choice(["OPEN", "REVIEW", "WAIT_DISPOSITION"]),
+            }
+        )
+    rows = _apply_common_filters(rows, params)
+    total_hold = sum(int(item["hold_qty"]) for item in rows)
+    return {
+        "success": True,
+        "tool_name": "get_hold_lot_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 총 홀드 수량 {format_summary_quantity(total_hold)}, 평균 홀드 시간 {sum(float(item['hold_hours']) for item in rows) / len(rows):.1f}h" if rows else "총 0건, 총 홀드 수량 0",
+    }
+
+
+def get_scrap_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # Scrap 데이터는 loss cost까지 같이 넣어 두면
+    # 생산, 불량과 함께 비용 관점 질문에도 쓸 수 있습니다.
+    date = str(params["date"])
+    random.seed(_stable_seed(date, 7000))
+    rows: List[Dict[str, Any]] = []
+    for spec, product in _iter_valid_process_product_pairs():
+        input_qty = random.randint(1800, 7200)
+        scrap_qty = int(input_qty * random.uniform(0.002, 0.028))
+        scrap_rate = round((scrap_qty / input_qty) * 100, 2)
+        loss_cost = int(scrap_qty * random.uniform(1.8, 8.5))
+        rows.append(
+            {
+                "날짜": date,
+                "공정": spec["공정"],
+                "공정군": spec["family"],
+                "MODE": product["MODE"],
+                "DEN": product["DEN"],
+                "TECH": product["TECH"],
+                "MCP_NO": product["MCP_NO"],
+                "라인": spec["라인"],
+                "scrap_qty": scrap_qty,
+                "scrap_rate": scrap_rate,
+                "scrap_reason": random.choice(SCRAP_REASONS_BY_FAMILY[spec["family"]]),
+                "loss_cost_usd": loss_cost,
+            }
+        )
+    rows = _apply_common_filters(rows, params)
+    total_scrap = sum(int(item["scrap_qty"]) for item in rows)
+    total_cost = sum(int(item["loss_cost_usd"]) for item in rows)
+    return {
+        "success": True,
+        "tool_name": "get_scrap_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 총 스크랩 {format_summary_quantity(total_scrap)}, 총 손실비용 ${total_cost:,}",
+    }
+
+
+def get_recipe_condition_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # 공정 조건/레시피 이력은 품질 이슈 원인을 설명할 때 자주 필요합니다.
+    # 초보자도 읽기 쉽게 각 공정당 한 행에 핵심 파라미터를 묶어 둡니다.
+    date = str(params["date"])
+    random.seed(_stable_seed(date, 8000))
+    rows: List[Dict[str, Any]] = []
+    for spec, product in _iter_valid_process_product_pairs():
+        base = RECIPE_BASE_BY_FAMILY[spec["family"]]
+        rows.append(
+            {
+                "날짜": date,
+                "공정": spec["공정"],
+                "공정군": spec["family"],
+                "MODE": product["MODE"],
+                "DEN": product["DEN"],
+                "TECH": product["TECH"],
+                "라인": spec["라인"],
+                "recipe_id": f"RC-{spec['family'][:3]}-{random.randint(10, 99)}",
+                "recipe_version": f"v{random.randint(1, 3)}.{random.randint(0, 9)}",
+                "temp_c": round(base["temp_c"] + random.uniform(-6, 6), 1),
+                "pressure_kpa": round(max(0, base["pressure_kpa"] + random.uniform(-12, 12)), 1),
+                "process_time_sec": int(base["process_time_sec"] + random.uniform(-60, 60)),
+                "operator_id": f"OP-{random.randint(100, 999)}",
+            }
+        )
+    rows = _apply_common_filters(rows, params)
+    return {
+        "success": True,
+        "tool_name": "get_recipe_condition_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 공정 조건/레시피 이력 조회 완료",
+    }
+
+
+def get_lot_trace_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    # Lot trace 데이터는 공정 이력과 상태를 함께 보여줘
+    # "어느 공정에서 오래 멈췄는지" 같은 질문에 쓰기 좋습니다.
+    date = str(params["date"])
+    random.seed(_stable_seed(date, 9000))
+    rows: List[Dict[str, Any]] = []
+    for index, (spec, product) in enumerate(_iter_valid_process_product_pairs(), start=1):
+        if random.random() < 0.35:
+            continue
+        rows.append(
+            {
+                "날짜": date,
+                "lot_id": _make_lot_id(date, spec["family"], index),
+                "wafer_id": f"WF-{random.randint(1000, 9999)}",
+                "공정": spec["공정"],
+                "공정군": spec["family"],
+                "MODE": product["MODE"],
+                "DEN": product["DEN"],
+                "TECH": product["TECH"],
+                "MCP_NO": product["MCP_NO"],
+                "라인": spec["라인"],
+                "route_step": random.randint(3, 28),
+                "current_status": random.choice(LOT_STATUS_FLOW),
+                "elapsed_hours": round(random.uniform(2.0, 96.0), 1),
+                "next_process": random.choice([item["공정"] for item in PROCESS_SPECS if item["family"] == spec["family"]]),
+                "hold_reason": random.choice(HOLD_REASONS_BY_FAMILY[spec["family"]]) if random.random() < 0.25 else "none",
+            }
+        )
+    rows = _apply_common_filters(rows, params)
+    avg_elapsed = sum(float(item["elapsed_hours"]) for item in rows) / len(rows) if rows else 0.0
+    return {
+        "success": True,
+        "tool_name": "get_lot_trace_data",
+        "data": rows,
+        "summary": f"총 {len(rows)}건, 평균 체류 시간 {avg_elapsed:.1f}h",
+    }
+
+
 DATASET_REGISTRY = {
     # 새 데이터셋을 추가할 때는 보통 여기와 조회 함수를 함께 추가하면 됩니다.
     # agent 쪽 분기문을 여러 군데 수정하지 않도록 등록 정보를 한 곳에 모았습니다.
@@ -369,6 +620,36 @@ DATASET_REGISTRY = {
         "tool_name": "get_wip_status",
         "tool": get_wip_status,
         "keywords": ["wip", "재공", "대기", "hold"],
+    },
+    "yield": {
+        "label": "수율",
+        "tool_name": "get_yield_data",
+        "tool": get_yield_data,
+        "keywords": ["수율", "yield", "pass rate", "합격률"],
+    },
+    "hold": {
+        "label": "홀드",
+        "tool_name": "get_hold_lot_data",
+        "tool": get_hold_lot_data,
+        "keywords": ["hold", "홀드", "보류 lot", "hold lot"],
+    },
+    "scrap": {
+        "label": "스크랩",
+        "tool_name": "get_scrap_data",
+        "tool": get_scrap_data,
+        "keywords": ["scrap", "스크랩", "폐기", "loss cost", "손실비용"],
+    },
+    "recipe": {
+        "label": "레시피",
+        "tool_name": "get_recipe_condition_data",
+        "tool": get_recipe_condition_data,
+        "keywords": ["recipe", "레시피", "공정 조건", "조건값", "parameter", "파라미터"],
+    },
+    "lot_trace": {
+        "label": "LOT 이력",
+        "tool_name": "get_lot_trace_data",
+        "tool": get_lot_trace_data,
+        "keywords": ["lot", "lot trace", "lot 이력", "추적", "traceability", "로트"],
     },
 }
 

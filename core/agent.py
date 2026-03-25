@@ -117,7 +117,7 @@ def _choose_query_mode(user_input: str, current_data: Dict[str, Any] | None) -> 
 def _looks_like_combined_analysis_request(query_text: str) -> bool:
     # 여러 원본 데이터를 같이 조회한 뒤, 바로 비교/달성율/차이 계산을 원하는지 판단합니다.
     normalized = normalize_text(query_text)
-    analysis_tokens = ["대비", "달성", "달성율", "달성률", "비교", "차이", "그룹", "별로", "기준", "요약", "정렬", "상위", "하위"]
+    analysis_tokens = ["대비", "달성", "달성율", "달성률", "비교", "차이", "그룹", "별로", "기준", "요약", "정렬", "상위", "하위", "순으로", "큰 순", "낮은 순"]
     return any(token in normalized for token in analysis_tokens)
 
 
@@ -397,7 +397,7 @@ def _run_retrieval(
     retrieval_key = retrieval_keys[0] if retrieval_keys else None
     if not retrieval_key:
         return {
-            "response": "어떤 데이터를 조회할지 판단하지 못했습니다. 생산, 목표, 불량, 설비, WIP 중 하나를 포함해 다시 질문해 주세요.",
+            "response": "어떤 데이터를 조회할지 판단하지 못했습니다. 생산, 목표, 불량, 설비, WIP, 수율, 홀드, 스크랩, 레시피, LOT 이력 중 하나를 포함해 다시 질문해 주세요.",
             "tool_results": [],
             "current_data": current_data,
             "extracted_params": extracted_params,
