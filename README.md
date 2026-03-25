@@ -35,6 +35,7 @@ streamlit run app.py
 
 - `reference_materials/docs/`
   - 초보자용 시작 문서
+  - 코드 상세 해설
   - 질문 사용법
   - 도메인 가이드
   - 추가/확장 가이드
@@ -43,12 +44,13 @@ streamlit run app.py
 ## 초보자용 읽기 순서
 
 1. `reference_materials/docs/START_HERE.md`
-2. `reference_materials/docs/QUESTION_GUIDE.md`
-3. `reference_materials/docs/DOMAIN_GUIDE.md`
-4. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
-5. `reference_materials/docs/TEST_QUESTIONS.md`
-6. `app.py`
-7. `core/agent.py`
+2. `reference_materials/docs/CODE_WALKTHROUGH.md`
+3. `reference_materials/docs/QUESTION_GUIDE.md`
+4. `reference_materials/docs/DOMAIN_GUIDE.md`
+5. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
+6. `reference_materials/docs/TEST_QUESTIONS.md`
+7. `app.py`
+8. `core/agent.py`
 
 ## 역할별 파일
 
