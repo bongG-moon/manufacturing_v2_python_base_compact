@@ -34,26 +34,21 @@ streamlit run app.py
 ## 참고 자료 위치
 
 - `reference_materials/docs/`
-  - 초보자용 구조 설명
-  - 기능 요약
+  - 초보자용 시작 문서
+  - 질문 사용법
+  - 도메인 가이드
+  - 추가/확장 가이드
   - 테스트 질문 모음
-  - 고급 참고 문서
 
 ## 초보자용 읽기 순서
 
-1. `reference_materials/docs/BEGINNER_STRUCTURE_GUIDE.md`
-2. `reference_materials/docs/CURRENT_DATA_GUIDE.md`
-3. `reference_materials/docs/COLUMN_NAMING_GUIDE.md`
+1. `reference_materials/docs/START_HERE.md`
+2. `reference_materials/docs/QUESTION_GUIDE.md`
+3. `reference_materials/docs/DOMAIN_GUIDE.md`
 4. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
-5. `app.py`
-6. `core/agent.py`
-
-## 고급 참고 문서
-
-아래 문서는 바로 수정하기보다 구조를 더 깊게 이해하고 싶을 때만 보면 됩니다.
-
-- `reference_materials/docs/LLM_FIRST_ANALYSIS_DESIGN.md`
-- `reference_materials/docs/DOMAIN_SUBAGENT_GUIDE.md`
+5. `reference_materials/docs/TEST_QUESTIONS.md`
+6. `app.py`
+7. `core/agent.py`
 
 ## 역할별 파일
 
