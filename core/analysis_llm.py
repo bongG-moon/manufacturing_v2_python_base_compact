@@ -44,6 +44,9 @@ def build_dataset_specific_hints(data: List[Dict[str, Any]], query_text: str) ->
         hints.append("- `불량율`, `불량률` 요청은 `defect_rate`를 우선 사용하세요.")
     if "주요불량유형" in columns:
         hints.append("- `최빈 불량 case`, `대표 불량유형` 요청은 `주요불량유형`의 최빈값을 사용하세요.")
+    if "production" in columns and "target" in columns:
+        hints.append("- `달성율`, `목표 대비 생산`, `achievement rate` 요청은 `production / target` 비율로 계산하세요.")
+        hints.append("- `달성율`은 원본 컬럼이 아니라 파생 컬럼이므로 코드에서 직접 만들어 결과 표에 넣으세요.")
 
     if "yield_rate" in columns and "공정군" in columns and "공정" in columns and ("최저 수율 공정" in query or "가장 낮은 수율 공정" in query):
         hints.append(
@@ -67,6 +70,10 @@ def build_dataset_specific_hints(data: List[Dict[str, Any]], query_text: str) ->
     if "avg_wait_minutes" in columns and "상태" in columns and "평균 대기시간" in query and "hold lot 수" in query:
         hints.append(
             "- `평균 대기시간과 hold lot 수` 요청은 `avg_wait_minutes` mean과 `상태 == 'HOLD'` 행 수를 같은 groupby 결과에 함께 넣으세요."
+        )
+    if "production" in columns and "target" in columns and ("달성율" in query or "달성률" in query or "목표 대비" in query):
+        hints.append(
+            "- `목표 대비 생산 달성율` 예시: grouped = df.groupby('공정', as_index=False).agg(production=('production', 'sum'), target=('target', 'sum')); grouped['달성율'] = grouped['production'] / grouped['target']; result = grouped"
         )
 
     return "\n".join(hints)

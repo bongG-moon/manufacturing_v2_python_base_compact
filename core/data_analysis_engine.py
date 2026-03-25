@@ -28,6 +28,13 @@ def _find_semantic_retry_reason(query_text: str, columns: List[str], code: str) 
         if not (has_wait_metric and has_hold_count):
             return "The previous code did not include both average wait time and hold lot count in the same grouped result."
 
+    if "production" in available and "target" in available and ("달성율" in query or "달성률" in query or "목표 대비" in query):
+        has_production = "production" in code_text
+        has_target = "target" in code_text
+        has_ratio = "/" in code_text or "달성율" in code_text or "달성률" in code_text or "achievement" in code_text.lower()
+        if not (has_production and has_target and has_ratio):
+            return "The previous code did not calculate achievement rate from both `production` and `target`."
+
     return ""
 
 

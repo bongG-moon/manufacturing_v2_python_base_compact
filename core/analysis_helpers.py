@@ -139,6 +139,8 @@ def extract_derived_columns_from_code(code: str) -> List[str]:
     patterns = [
         r"result\[['\"]([^'\"]+)['\"]\]\s*=",
         r"df\[['\"]([^'\"]+)['\"]\]\s*=",
+        # grouped['달성율'] = ... 같은 중간 변수에도 파생 컬럼이 생길 수 있습니다.
+        r"[A-Za-z_][A-Za-z0-9_]*\[['\"]([^'\"]+)['\"]\]\s*=",
         # named aggregation:
         # .agg(평균_불량율=('defect_rate', 'mean'))
         r"([A-Za-z가-힣0-9_]+)\s*=\s*\(\s*['\"][^'\"]+['\"]\s*,",
