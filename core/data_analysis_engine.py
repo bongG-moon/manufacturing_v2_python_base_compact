@@ -12,6 +12,25 @@ from .analysis_helpers import (
 from .safe_code_executor import execute_safe_dataframe_code
 
 
+def _find_semantic_retry_reason(query_text: str, columns: List[str], code: str) -> str:
+    # 복잡한 규칙 엔진은 피하고, 지금 문제가 된 두 패턴만 가볍게 확인합니다.
+    query = str(query_text or "")
+    code_text = str(code or "")
+    available = set(columns)
+
+    if "hold_reason" in available and ("대표 hold 사유" in query or "최빈 hold 사유" in query):
+        if "hold_reason" not in code_text:
+            return "The previous code did not use `hold_reason` even though the user explicitly asked for representative hold reason."
+
+    if "avg_wait_minutes" in available and "상태" in available and "평균 대기시간" in query and "hold lot 수" in query:
+        has_wait_metric = "avg_wait_minutes" in code_text
+        has_hold_count = "HOLD" in code_text or "hold_lot" in code_text or "상태" in code_text
+        if not (has_wait_metric and has_hold_count):
+            return "The previous code did not include both average wait time and hold lot count in the same grouped result."
+
+    return ""
+
+
 def _execute_plan(plan: Dict[str, Any], data: List[Dict[str, Any]]) -> Dict[str, Any]:
     # 어떤 방식으로 계획이 만들어졌든 실행은 한 곳으로 모읍니다.
     # 그래야 안전 검증과 오류 처리를 일관되게 관리할 수 있습니다.
@@ -116,6 +135,18 @@ def execute_analysis_query(query_text: str, data: List[Dict[str, Any]], source_t
     if plan is None:
         plan = minimal_fallback_plan(query_text, data)
         analysis_logic = "minimal_fallback"
+    else:
+        semantic_retry_reason = _find_semantic_retry_reason(query_text, columns, str(plan.get("code", "")))
+        if semantic_retry_reason:
+            retry_plan, retry_logic = build_llm_plan(
+                query_text,
+                data,
+                retry_error=semantic_retry_reason,
+                previous_code=str(plan.get("code", "")),
+            )
+            if retry_plan is not None:
+                plan = retry_plan
+                analysis_logic = retry_logic
 
     plan_missing_columns = validate_plan_columns(plan, columns)
     if plan_missing_columns:
