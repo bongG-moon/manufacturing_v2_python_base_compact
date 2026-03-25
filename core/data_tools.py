@@ -188,7 +188,6 @@ def get_production_data(params: Dict[str, Any]) -> Dict[str, Any]:
                 "MCP_NO": product["MCP_NO"],
                 "라인": spec["라인"],
                 "production": qty,
-                "단위": "K",
             }
         )
     rows = _apply_common_filters(rows, params)
@@ -219,7 +218,6 @@ def get_target_data(params: Dict[str, Any]) -> Dict[str, Any]:
                 "MCP_NO": product["MCP_NO"],
                 "라인": spec["라인"],
                 "target": target,
-                "단위": "K",
             }
         )
     rows = _apply_common_filters(rows, params)
@@ -339,27 +337,102 @@ def get_wip_status(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-RETRIEVAL_TOOL_MAP = {
-    "production": get_production_data,
-    "target": get_target_data,
-    "defect": get_defect_rate,
-    "equipment": get_equipment_status,
-    "wip": get_wip_status,
+DATASET_REGISTRY = {
+    # 새 데이터셋을 추가할 때는 보통 여기와 조회 함수를 함께 추가하면 됩니다.
+    # agent 쪽 분기문을 여러 군데 수정하지 않도록 등록 정보를 한 곳에 모았습니다.
+    "production": {
+        "label": "생산",
+        "tool_name": "get_production_data",
+        "tool": get_production_data,
+        "keywords": ["생산", "production", "실적"],
+    },
+    "target": {
+        "label": "목표",
+        "tool_name": "get_target_data",
+        "tool": get_target_data,
+        "keywords": ["목표", "target", "계획"],
+    },
+    "defect": {
+        "label": "불량",
+        "tool_name": "get_defect_rate",
+        "tool": get_defect_rate,
+        "keywords": ["불량", "defect", "결함"],
+    },
+    "equipment": {
+        "label": "설비",
+        "tool_name": "get_equipment_status",
+        "tool": get_equipment_status,
+        "keywords": ["설비", "가동률", "equipment", "downtime"],
+    },
+    "wip": {
+        "label": "WIP",
+        "tool_name": "get_wip_status",
+        "tool": get_wip_status,
+        "keywords": ["wip", "재공", "대기", "hold"],
+    },
 }
+
+RETRIEVAL_TOOL_MAP = {key: meta["tool"] for key, meta in DATASET_REGISTRY.items()}
+
+
+def get_dataset_label(dataset_key: str) -> str:
+    dataset_meta = DATASET_REGISTRY.get(dataset_key, {})
+    return str(dataset_meta.get("label", dataset_key))
+
+
+def pick_retrieval_tools(query_text: str) -> List[str]:
+    # 등록부를 기준으로 질의에 포함된 데이터 주제를 찾습니다.
+    # 새 tool이 생겨도 keywords만 등록하면 같은 로직을 그대로 재사용할 수 있습니다.
+    query = str(query_text or "").lower()
+    selected: List[str] = []
+
+    for dataset_key, dataset_meta in DATASET_REGISTRY.items():
+        keywords = dataset_meta.get("keywords", [])
+        if any(token in query for token in keywords):
+            selected.append(dataset_key)
+
+    return selected
 
 
 def pick_retrieval_tool(query_text: str) -> str | None:
-    # compact 서비스에서는 복잡한 intent 분류기보다
-    # 읽고 수정하기 쉬운 단순 키워드 라우터를 사용합니다.
-    query = str(query_text or "").lower()
-    if any(token in query for token in ["설비", "가동률", "equipment", "downtime"]):
-        return "equipment"
-    if any(token in query for token in ["wip", "재공", "대기", "hold"]):
-        return "wip"
-    if any(token in query for token in ["불량", "defect", "결함"]):
-        return "defect"
-    if any(token in query for token in ["목표", "target", "계획"]):
-        return "target"
-    if any(token in query for token in ["생산", "production", "실적"]):
-        return "production"
-    return None
+    selected = pick_retrieval_tools(query_text)
+    return selected[0] if selected else None
+
+
+def execute_retrieval_tools(dataset_keys: List[str], params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    # agent는 "어떤 데이터를 가져와야 하는가"만 결정하고,
+    # 실제 조회 실행은 이 함수에 맡기면 더 읽기 쉽습니다.
+    results: List[Dict[str, Any]] = []
+    for dataset_key in dataset_keys:
+        dataset_meta = DATASET_REGISTRY.get(dataset_key)
+        if not dataset_meta:
+            continue
+
+        result = dataset_meta["tool"](params)
+        if isinstance(result, dict):
+            result["dataset_key"] = dataset_key
+            result["dataset_label"] = dataset_meta["label"]
+        results.append(result)
+    return results
+
+
+def build_current_datasets(tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # 여러 원본 데이터를 동시에 조회했을 때,
+    # 각 데이터셋을 이름별로 보관해 두면 이후 분석 전략을 바꾸기 쉽습니다.
+    datasets: Dict[str, Any] = {}
+    for result in tool_results:
+        dataset_key = result.get("dataset_key")
+        if not dataset_key:
+            continue
+
+        rows = result.get("data", [])
+        first_row = rows[0] if isinstance(rows, list) and rows else {}
+        datasets[dataset_key] = {
+            "label": result.get("dataset_label", get_dataset_label(str(dataset_key))),
+            "tool_name": result.get("tool_name"),
+            "summary": result.get("summary", ""),
+            "row_count": len(rows) if isinstance(rows, list) else 0,
+            "columns": list(first_row.keys()) if isinstance(first_row, dict) else [],
+            "data": rows if isinstance(rows, list) else [],
+        }
+    return datasets

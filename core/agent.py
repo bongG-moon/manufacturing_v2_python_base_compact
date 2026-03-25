@@ -1,11 +1,12 @@
 import json
 from typing import Any, Dict, List, Literal
 
+import pandas as pd
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .config import SYSTEM_PROMPT, get_llm
 from .data_analysis_engine import execute_analysis_query
-from .data_tools import RETRIEVAL_TOOL_MAP, pick_retrieval_tool
+from .data_tools import build_current_datasets, execute_retrieval_tools, pick_retrieval_tools
 from .filter_utils import normalize_text
 from .number_format import format_rows_for_display
 from .parameter_resolver import resolve_required_params
@@ -74,8 +75,18 @@ def _looks_like_new_data_request(query_text: str) -> bool:
     # 질문이 "새 데이터를 가져오려는 것인지" 아니면
     # "현재 표를 다시 가공하려는 것인지"를 가볍게 판단하는 1차 규칙입니다.
     normalized = normalize_text(query_text)
+    retrieval_keys = pick_retrieval_tools(query_text)
     retrieval_tokens = ["생산", "목표", "불량", "설비", "가동률", "재공", "wip", "오늘", "어제", "조회"]
     transform_tokens = ["상위", "하위", "그룹", "정렬", "비교", "요약", "필터", "기준", "별로"]
+
+    # 서로 다른 원본 데이터셋이 2개 이상 보이면 현재 표 가공보다 "새 조회" 가능성이 훨씬 큽니다.
+    if len(retrieval_keys) >= 2:
+        return True
+
+    # "조회/데이터/보여줘" 같은 표현이 있으면 새로 가져오겠다는 의도로 보는 편이 안전합니다.
+    if retrieval_keys and any(token in normalized for token in ["조회", "데이터", "보여", "알려"]):
+        return True
+
     return any(token in normalized for token in retrieval_tokens) and not any(token in normalized for token in transform_tokens)
 
 
@@ -101,6 +112,190 @@ def _choose_query_mode(user_input: str, current_data: Dict[str, Any] | None) -> 
     if _has_current_data(current_data) and not _looks_like_new_data_request(user_input):
         return "followup_transform"
     return "retrieval"
+
+
+def _looks_like_combined_analysis_request(query_text: str) -> bool:
+    # 여러 원본 데이터를 같이 조회한 뒤, 바로 비교/달성율/차이 계산을 원하는지 판단합니다.
+    normalized = normalize_text(query_text)
+    analysis_tokens = ["대비", "달성", "달성율", "달성률", "비교", "차이", "그룹", "별로", "기준", "요약", "정렬", "상위", "하위"]
+    return any(token in normalized for token in analysis_tokens)
+
+
+def _build_analysis_base_table(tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # 여러 데이터셋을 바로 억지로 합치는 대신,
+    # "질문 분석에 쓸 수 있는 공통 테이블이 있으면 만든다"는 개념으로 사용합니다.
+    # 이렇게 이름을 바꾸면 merge 자체가 목적이 아니라 분석 준비 단계라는 점이 더 잘 보입니다.
+    dimension_columns = ["날짜", "공정", "공정군", "MODE", "DEN", "TECH", "LEAD", "MCP_NO", "라인"]
+    frames: List[pd.DataFrame] = []
+    source_names: List[str] = []
+
+    for result in tool_results:
+        rows = result.get("data", [])
+        if not isinstance(rows, list) or not rows:
+            continue
+
+        df = pd.DataFrame(rows)
+        available_dimensions = [column for column in dimension_columns if column in df.columns]
+        metric_columns = [column for column in df.columns if column not in available_dimensions]
+        if not available_dimensions or not metric_columns:
+            continue
+
+        keep_columns = available_dimensions + metric_columns
+        frames.append(df[keep_columns].copy())
+        source_names.append(result.get("tool_name", "unknown"))
+
+    if not frames:
+        return {
+            "success": False,
+            "tool_name": "analysis_base_table",
+            "error_message": "여러 조회 결과에서 공통 분석용 테이블을 만들지 못했습니다.",
+            "data": [],
+        }
+
+    merged_df = frames[0]
+    join_columns = [column for column in dimension_columns if column in merged_df.columns]
+
+    for next_df in frames[1:]:
+        next_join_columns = [column for column in join_columns if column in next_df.columns]
+        if not next_join_columns:
+            return {
+                "success": False,
+                "tool_name": "analysis_base_table",
+                "error_message": "여러 조회 결과 사이에 공통 키 컬럼이 부족해 함께 분석할 수 없습니다.",
+                "data": [],
+            }
+        join_columns = next_join_columns
+        merged_df = merged_df.merge(next_df, on=join_columns, how="outer")
+
+    merged_df = merged_df.where(pd.notnull(merged_df), None)
+    merged_rows = merged_df.to_dict(orient="records")
+    source_label = ", ".join(source_names)
+    return {
+        "success": True,
+        "tool_name": "analysis_base_table",
+        "data": merged_rows,
+        "summary": f"복수 조회 분석용 테이블 생성: {source_label}, 총 {len(merged_rows)}행",
+        "source_tool_names": source_names,
+        "join_columns": join_columns,
+    }
+
+
+def _build_multi_dataset_overview(tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # 여러 원본 데이터를 한 번에 요청했지만 바로 계산까지 하지 않는 경우,
+    # 사용자에게 어떤 데이터셋이 준비되었는지 먼저 보여주는 용도의 간단한 표입니다.
+    overview_rows = []
+    for result in tool_results:
+        overview_rows.append(
+            {
+                "데이터셋": result.get("dataset_label", result.get("dataset_key", "")),
+                "행수": len(result.get("data", [])) if isinstance(result.get("data"), list) else 0,
+                "요약": result.get("summary", ""),
+            }
+        )
+
+    return {
+        "success": True,
+        "tool_name": "multi_dataset_overview",
+        "data": overview_rows,
+        "summary": f"복수 데이터셋 조회 완료: 총 {len(overview_rows)}개",
+    }
+
+
+def _run_multi_retrieval(
+    user_input: str,
+    chat_history: List[Dict[str, str]],
+    current_data: Dict[str, Any] | None,
+    extracted_params: Dict[str, Any],
+    retrieval_keys: List[str],
+) -> Dict[str, Any]:
+    # 범용 다중 조회 경로:
+    # 1) 등록부 기준으로 필요한 원본 tool 실행
+    # 2) 각 결과를 current_datasets 형태로 보관
+    # 3) 질문이 비교/달성율 성격이면 공통 분석용 테이블을 만든 뒤 pandas 분석 수행
+    source_results = execute_retrieval_tools(retrieval_keys, extracted_params)
+    for result in source_results:
+        if result.get("success"):
+            result["original_tool_name"] = result.get("tool_name")
+            result["applied_params"] = _collect_applied_params(extracted_params)
+
+    failed_results = [result for result in source_results if not result.get("success")]
+    if failed_results:
+        first_error = failed_results[0]
+        return {
+            "response": first_error.get("error_message", "복수 조회 중 오류가 발생했습니다."),
+            "tool_results": source_results,
+            "current_data": current_data,
+            "extracted_params": extracted_params,
+            "awaiting_analysis_choice": bool(_has_current_data(current_data)),
+        }
+
+    current_datasets = build_current_datasets(source_results)
+
+    if _looks_like_combined_analysis_request(user_input):
+        analysis_base = _build_analysis_base_table(source_results)
+        if not analysis_base.get("success"):
+            overview_result = _build_multi_dataset_overview(source_results)
+            overview_result["current_datasets"] = current_datasets
+            overview_result["applied_params"] = _collect_applied_params(extracted_params)
+            return {
+                "response": analysis_base.get(
+                    "error_message",
+                    "여러 데이터셋을 함께 분석할 공통 기준을 찾지 못했습니다.",
+                ),
+                "tool_results": [*source_results, overview_result],
+                "current_data": overview_result,
+                "extracted_params": extracted_params,
+                "awaiting_analysis_choice": True,
+            }
+
+        analysis_result = execute_analysis_query(
+            query_text=user_input,
+            data=analysis_base.get("data", []),
+            source_tool_name=analysis_base.get("tool_name", ""),
+        )
+        if analysis_result.get("success"):
+            analysis_result["original_tool_name"] = "+".join(retrieval_keys)
+            analysis_result["applied_params"] = _collect_applied_params(extracted_params)
+            analysis_result["current_datasets"] = current_datasets
+            analysis_result["analysis_base_info"] = {
+                "join_columns": analysis_base.get("join_columns", []),
+                "source_tool_names": analysis_base.get("source_tool_names", []),
+            }
+            return {
+                "response": _generate_response(user_input, analysis_result, chat_history),
+                "tool_results": [*source_results, analysis_result],
+                "current_data": analysis_result,
+                "extracted_params": extracted_params,
+                "awaiting_analysis_choice": True,
+            }
+
+        overview_result = _build_multi_dataset_overview(source_results)
+        overview_result["original_tool_name"] = "+".join(retrieval_keys)
+        overview_result["applied_params"] = _collect_applied_params(extracted_params)
+        overview_result["current_datasets"] = current_datasets
+        return {
+            "response": analysis_result.get(
+                "error_message",
+                "복수 데이터셋 분석에 실패했습니다.",
+            ),
+            "tool_results": [*source_results, overview_result],
+            "current_data": overview_result,
+            "extracted_params": extracted_params,
+            "awaiting_analysis_choice": True,
+        }
+
+    overview_result = _build_multi_dataset_overview(source_results)
+    overview_result["original_tool_name"] = "+".join(retrieval_keys)
+    overview_result["applied_params"] = _collect_applied_params(extracted_params)
+    overview_result["current_datasets"] = current_datasets
+
+    return {
+        "response": _generate_response(user_input, overview_result, chat_history),
+        "tool_results": [*source_results, overview_result],
+        "current_data": overview_result,
+        "extracted_params": extracted_params,
+        "awaiting_analysis_choice": True,
+    }
 
 
 def _format_result_preview(result: Dict[str, Any], max_rows: int = 5) -> str:
@@ -198,7 +393,8 @@ def _run_retrieval(
 ) -> Dict[str, Any]:
     # 이 경로는 생산/목표/불량/설비/WIP 중 어떤 원본 데이터를
     # 새로 가져와야 하는지 결정하고 실행합니다.
-    retrieval_key = pick_retrieval_tool(user_input)
+    retrieval_keys = pick_retrieval_tools(user_input)
+    retrieval_key = retrieval_keys[0] if retrieval_keys else None
     if not retrieval_key:
         return {
             "response": "어떤 데이터를 조회할지 판단하지 못했습니다. 생산, 목표, 불량, 설비, WIP 중 하나를 포함해 다시 질문해 주세요.",
@@ -217,7 +413,10 @@ def _run_retrieval(
             "awaiting_analysis_choice": bool(_has_current_data(current_data)),
         }
 
-    result = RETRIEVAL_TOOL_MAP[retrieval_key](extracted_params)
+    if len(retrieval_keys) > 1:
+        return _run_multi_retrieval(user_input, chat_history, current_data, extracted_params, retrieval_keys)
+
+    result = execute_retrieval_tools([retrieval_key], extracted_params)[0]
     if result.get("success"):
         result["original_tool_name"] = result.get("tool_name")
         result["applied_params"] = _collect_applied_params(extracted_params)

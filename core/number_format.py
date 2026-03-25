@@ -53,12 +53,12 @@ def format_number_by_unit(value: Any, unit: str | None) -> Any:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return value
     if unit == "K":
-        return f"{value / 1_000:.1f}K"
+        return f"{value / 1_000:,.2f}K"
     if unit == "M":
-        return f"{value / 1_000_000:.1f}M"
+        return f"{value / 1_000_000:,.2f}M"
     if float(value).is_integer():
-        return int(value)
-    return round(float(value), 1)
+        return f"{int(value):,}"
+    return f"{float(value):,.2f}"
 
 
 def build_quantity_unit_map(rows: List[Dict[str, Any]]) -> Dict[str, str | None]:

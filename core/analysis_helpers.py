@@ -132,9 +132,31 @@ def minimal_fallback_plan(query_text: str, data: List[Dict[str, Any]]) -> Prepro
     }
 
 
+def extract_derived_columns_from_code(code: str) -> List[str]:
+    # LLM이 result['achievement_rate'] = ... 처럼 새 컬럼을 만드는 경우가 많습니다.
+    # 이런 컬럼까지 "없는 컬럼"으로 막으면 정상적인 계산도 실패하므로 간단한 패턴으로 먼저 허용합니다.
+    derived_columns: List[str] = []
+    patterns = [
+        r"result\[['\"]([^'\"]+)['\"]\]\s*=",
+        r"df\[['\"]([^'\"]+)['\"]\]\s*=",
+    ]
+
+    for pattern in patterns:
+        for match in re.findall(pattern, str(code or "")):
+            column_name = str(match).strip()
+            if column_name and column_name not in derived_columns:
+                derived_columns.append(column_name)
+
+    return derived_columns
+
+
 def validate_plan_columns(plan: PreprocessPlan, columns: List[str]) -> List[str]:
+    derived_columns = extract_derived_columns_from_code(str(plan.get("code", "")))
+    allowed_columns = set(columns) | set(derived_columns)
     required_columns: List[str] = []
-    for field_name in ["group_by_columns", "partition_by_columns", "output_columns"]:
+
+    # 그룹 기준 컬럼은 반드시 원본 테이블에 있어야 합니다.
+    for field_name in ["group_by_columns", "partition_by_columns"]:
         for column in plan.get(field_name, []) or []:
             if column is None:
                 continue
@@ -142,16 +164,25 @@ def validate_plan_columns(plan: PreprocessPlan, columns: List[str]) -> List[str]
             if column_name and column_name.lower() != "none":
                 required_columns.append(column_name)
 
+    # 출력 컬럼, 정렬 컬럼, metric 컬럼은 실행 중 새로 만들어질 수 있으므로
+    # 원본 컬럼 + 파생 컬럼 목록을 함께 허용합니다.
+    for column in plan.get("output_columns", []) or []:
+        if column is None:
+            continue
+        column_name = str(column).strip()
+        if column_name and column_name.lower() != "none" and column_name not in allowed_columns:
+            required_columns.append(column_name)
+
     for field_name in ["sort_by", "metric_column"]:
         raw_value = plan.get(field_name, "")
         if raw_value is None:
             continue
         column_name = str(raw_value).strip()
-        if column_name and column_name.lower() != "none":
+        if column_name and column_name.lower() != "none" and column_name not in allowed_columns:
             required_columns.append(column_name)
 
     unique_required = list(dict.fromkeys(required_columns))
-    return [column for column in unique_required if column not in columns]
+    return [column for column in unique_required if column not in allowed_columns]
 
 
 def build_transformation_summary(
