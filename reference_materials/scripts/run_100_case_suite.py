@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, List
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = REFERENCE_DIR.parent
+REPORTS_DIR = REFERENCE_DIR / "reports"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.agent import run_agent
 from core.number_format import format_rows_for_display
@@ -165,7 +174,8 @@ def write_report_incrementally(output_path: Path) -> None:
 
 
 def main() -> None:
-    output_path = Path("CASE_100_TEST_REPORT.md")
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = REPORTS_DIR / "CASE_100_TEST_REPORT.md"
     write_report_incrementally(output_path)
     print(f"Saved report to {output_path}")
 

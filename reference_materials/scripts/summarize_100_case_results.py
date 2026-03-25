@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import List
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = REFERENCE_DIR.parent
+REPORTS_DIR = REFERENCE_DIR / "reports"
 
-REPORT_PATH = Path("CASE_100_TEST_REPORT.md")
-SUMMARY_PATH = Path("CASE_100_SUMMARY.md")
-QUALITY_PATH = Path("CASE_100_QUALITY_REVIEW.md")
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+REPORT_PATH = REPORTS_DIR / "CASE_100_TEST_REPORT.md"
+SUMMARY_PATH = REPORTS_DIR / "CASE_100_SUMMARY.md"
+QUALITY_PATH = REPORTS_DIR / "CASE_100_QUALITY_REVIEW.md"
 
 
 @dataclass
@@ -209,6 +217,7 @@ def quality_review(rows: List[CaseRow]) -> str:
 
 
 def main() -> None:
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     rows = load_cases()
     SUMMARY_PATH.write_text(summarize_cases(rows), encoding="utf-8")
     QUALITY_PATH.write_text(quality_review(rows), encoding="utf-8")

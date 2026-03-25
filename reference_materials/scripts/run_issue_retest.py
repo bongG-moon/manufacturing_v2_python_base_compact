@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = REFERENCE_DIR.parent
+REPORTS_DIR = REFERENCE_DIR / "reports"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from core.agent import run_agent
 
-
-REPORT_PATH = Path("ISSUE_10_RETEST_REPORT.md")
+REPORT_PATH = REPORTS_DIR / "ISSUE_10_RETEST_REPORT.md"
 
 
 @dataclass
@@ -175,6 +183,7 @@ def _build_report(results: List[Dict[str, Any]]) -> str:
 
 
 def main() -> None:
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     results = [_run_case(case) for case in CASES]
     REPORT_PATH.write_text(_build_report(results), encoding="utf-8")
     print(f"Saved {REPORT_PATH}")

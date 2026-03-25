@@ -1,5 +1,14 @@
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = REFERENCE_DIR.parent
+REPORTS_DIR = REFERENCE_DIR / "reports"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.agent import run_agent
 
@@ -86,7 +95,8 @@ def _render_report() -> str:
 
 def main() -> None:
     report = _render_report()
-    output_path = Path("REGRESSION_CHECK_REPORT.md")
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = REPORTS_DIR / "REGRESSION_CHECK_REPORT.md"
     output_path.write_text(report, encoding="utf-8")
     print(f"Saved report to {output_path}")
 

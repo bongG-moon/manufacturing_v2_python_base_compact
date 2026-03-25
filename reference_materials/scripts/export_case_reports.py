@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
 from typing import Iterable
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = REFERENCE_DIR.parent
+REPORTS_DIR = REFERENCE_DIR / "reports"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from summarize_100_case_results import CaseRow, load_cases
 
-
-BASE_DIR = Path(__file__).resolve().parent
-XLSX_PATH = BASE_DIR / "CASE_100_TEST_REPORT.xlsx"
-DOCX_PATH = BASE_DIR / "CASE_100_TEST_REPORT.docx"
+XLSX_PATH = REPORTS_DIR / "CASE_100_TEST_REPORT.xlsx"
+DOCX_PATH = REPORTS_DIR / "CASE_100_TEST_REPORT.docx"
 
 
 STATUS_SUCCESS = "성공"
@@ -334,6 +341,7 @@ def _write_docx() -> bool:
 
 
 def main() -> None:
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     _write_excel()
     docx_created = _write_docx()
     print(f"Saved Excel report to {XLSX_PATH}")
