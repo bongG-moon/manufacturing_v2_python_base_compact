@@ -1,52 +1,8 @@
 import random
 from typing import Any, Dict, List, Optional
 
+from .domain_knowledge import DATASET_METADATA, PROCESS_SPECS, PRODUCTS, PRODUCT_TECH_FAMILY
 from .number_format import format_summary_quantity
-
-
-PROCESS_SPECS = [
-    # 예제 서비스지만 현업 느낌을 내기 위해
-    # 공정군(family), 실제 공정명, 라인 정보를 함께 둡니다.
-    {"family": "ASSY_PREP", "공정": "incoming_sort", "라인": "ASSY-L1"},
-    {"family": "ASSY_PREP", "공정": "wafer_bake", "라인": "ASSY-L1"},
-    {"family": "ASSY_PREP", "공정": "plasma_clean", "라인": "ASSY-L2"},
-    {"family": "DIE_ATTACH", "공정": "epoxy_dispense", "라인": "DA-L1"},
-    {"family": "DIE_ATTACH", "공정": "die_place", "라인": "DA-L1"},
-    {"family": "DIE_ATTACH", "공정": "post_cure", "라인": "DA-L2"},
-    {"family": "WIRE_BOND", "공정": "first_bond", "라인": "WB-L1"},
-    {"family": "WIRE_BOND", "공정": "stitch_bond", "라인": "WB-L1"},
-    {"family": "WIRE_BOND", "공정": "pull_test", "라인": "WB-L2"},
-    {"family": "FLIP_CHIP", "공정": "flip_place", "라인": "FC-L1"},
-    {"family": "FLIP_CHIP", "공정": "reflow", "라인": "FC-L1"},
-    {"family": "FLIP_CHIP", "공정": "underfill_cure", "라인": "FC-L2"},
-    {"family": "MOLD", "공정": "transfer_mold", "라인": "MOLD-L1"},
-    {"family": "MOLD", "공정": "post_mold_cure", "라인": "MOLD-L1"},
-    {"family": "MOLD", "공정": "marking", "라인": "MOLD-L2"},
-    {"family": "SINGULATION", "공정": "saw_cut", "라인": "SAW-L1"},
-    {"family": "SINGULATION", "공정": "laser_saw", "라인": "SAW-L2"},
-    {"family": "TEST", "공정": "final_test", "라인": "TEST-L1"},
-    {"family": "TEST", "공정": "burn_in", "라인": "TEST-L2"},
-    {"family": "PACK_OUT", "공정": "tray_pack", "라인": "PKG-L1"},
-    {"family": "PACK_OUT", "공정": "ship_release", "라인": "PKG-L2"},
-]
-
-PRODUCTS = [
-    # 제품 조건 추출과 후속 분석에서 사용할 대표 제품 조합입니다.
-    {"MODE": "DDR5_6400", "DEN": "16Gb", "TECH": "WB", "LEAD": "96L", "MCP_NO": "MCP-DR5-016G-2H"},
-    {"MODE": "DDR5_5600", "DEN": "32Gb", "TECH": "WB", "LEAD": "128L", "MCP_NO": "MCP-DR5-032G-2H"},
-    {"MODE": "LPDDR5X_8533", "DEN": "64Gb", "TECH": "FC", "LEAD": "168B", "MCP_NO": "MCP-LP5X-064G-4H"},
-    {"MODE": "UFS3.1", "DEN": "128Gb", "TECH": "MCP", "LEAD": "153B", "MCP_NO": "MCP-UFS-128G-3H"},
-    {"MODE": "PMIC", "DEN": "8Gb", "TECH": "WLCSP", "LEAD": "48L", "MCP_NO": "PMIC-008G-R2"},
-    {"MODE": "CIS", "DEN": "16Gb", "TECH": "FO", "LEAD": "64L", "MCP_NO": "CIS-016G-R1"},
-]
-
-PRODUCT_TECH_FAMILY = {
-    "WB": {"ASSY_PREP", "DIE_ATTACH", "WIRE_BOND", "MOLD", "SINGULATION", "TEST", "PACK_OUT"},
-    "FC": {"ASSY_PREP", "FLIP_CHIP", "MOLD", "SINGULATION", "TEST", "PACK_OUT"},
-    "FO": {"ASSY_PREP", "FLIP_CHIP", "MOLD", "TEST", "PACK_OUT"},
-    "WLCSP": {"ASSY_PREP", "FLIP_CHIP", "TEST", "PACK_OUT"},
-    "MCP": {"ASSY_PREP", "DIE_ATTACH", "WIRE_BOND", "MOLD", "TEST", "PACK_OUT"},
-}
 
 DEFECTS_BY_FAMILY = {
     "ASSY_PREP": ["particle", "contamination", "moisture_exceed", "bake_fail"],
@@ -588,69 +544,30 @@ def get_lot_trace_data(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+DATASET_TOOL_FUNCTIONS = {
+    "production": get_production_data,
+    "target": get_target_data,
+    "defect": get_defect_rate,
+    "equipment": get_equipment_status,
+    "wip": get_wip_status,
+    "yield": get_yield_data,
+    "hold": get_hold_lot_data,
+    "scrap": get_scrap_data,
+    "recipe": get_recipe_condition_data,
+    "lot_trace": get_lot_trace_data,
+}
+
+
 DATASET_REGISTRY = {
-    # 새 데이터셋을 추가할 때는 보통 여기와 조회 함수를 함께 추가하면 됩니다.
-    # agent 쪽 분기문을 여러 군데 수정하지 않도록 등록 정보를 한 곳에 모았습니다.
-    "production": {
-        "label": "생산",
-        "tool_name": "get_production_data",
-        "tool": get_production_data,
-        "keywords": ["생산", "production", "실적"],
-    },
-    "target": {
-        "label": "목표",
-        "tool_name": "get_target_data",
-        "tool": get_target_data,
-        "keywords": ["목표", "target", "계획"],
-    },
-    "defect": {
-        "label": "불량",
-        "tool_name": "get_defect_rate",
-        "tool": get_defect_rate,
-        "keywords": ["불량", "defect", "결함"],
-    },
-    "equipment": {
-        "label": "설비",
-        "tool_name": "get_equipment_status",
-        "tool": get_equipment_status,
-        "keywords": ["설비", "가동률", "equipment", "downtime"],
-    },
-    "wip": {
-        "label": "WIP",
-        "tool_name": "get_wip_status",
-        "tool": get_wip_status,
-        "keywords": ["wip", "재공", "대기", "hold"],
-    },
-    "yield": {
-        "label": "수율",
-        "tool_name": "get_yield_data",
-        "tool": get_yield_data,
-        "keywords": ["수율", "yield", "pass rate", "합격률"],
-    },
-    "hold": {
-        "label": "홀드",
-        "tool_name": "get_hold_lot_data",
-        "tool": get_hold_lot_data,
-        "keywords": ["hold", "홀드", "보류 lot", "hold lot"],
-    },
-    "scrap": {
-        "label": "스크랩",
-        "tool_name": "get_scrap_data",
-        "tool": get_scrap_data,
-        "keywords": ["scrap", "스크랩", "폐기", "loss cost", "손실비용"],
-    },
-    "recipe": {
-        "label": "레시피",
-        "tool_name": "get_recipe_condition_data",
-        "tool": get_recipe_condition_data,
-        "keywords": ["recipe", "레시피", "공정 조건", "조건값", "parameter", "파라미터"],
-    },
-    "lot_trace": {
-        "label": "LOT 이력",
-        "tool_name": "get_lot_trace_data",
-        "tool": get_lot_trace_data,
-        "keywords": ["lot", "lot trace", "lot 이력", "추적", "traceability", "로트"],
-    },
+    # 질문 해석용 label/keywords는 기준 사전(domain_knowledge)에 두고,
+    # 여기서는 "어떤 함수가 실제 데이터를 만든다"만 연결합니다.
+    dataset_key: {
+        "label": DATASET_METADATA[dataset_key]["label"],
+        "tool_name": tool_fn.__name__,
+        "tool": tool_fn,
+        "keywords": DATASET_METADATA[dataset_key]["keywords"],
+    }
+    for dataset_key, tool_fn in DATASET_TOOL_FUNCTIONS.items()
 }
 
 RETRIEVAL_TOOL_MAP = {key: meta["tool"] for key, meta in DATASET_REGISTRY.items()}
@@ -671,6 +588,12 @@ def pick_retrieval_tools(query_text: str) -> List[str]:
         keywords = dataset_meta.get("keywords", [])
         if any(token in query for token in keywords):
             selected.append(dataset_key)
+
+    # "홀드 lot"는 보통 홀드된 lot 목록을 뜻하는 경우가 많아서,
+    # 사용자가 trace/이력까지 명시하지 않으면 hold 조회를 우선합니다.
+    explicit_trace_tokens = ["trace", "이력", "추적", "traceability"]
+    if "hold" in selected and "lot_trace" in selected and not any(token in query for token in explicit_trace_tokens):
+        selected = [item for item in selected if item != "lot_trace"]
 
     return selected
 
