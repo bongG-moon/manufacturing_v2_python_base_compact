@@ -38,7 +38,7 @@ streamlit run app.py
   - 기능 요약
   - 테스트 질문 모음
 - `reference_materials/reports/`
-  - 테스트 결과와 회귀 보고서
+  - 테스트 결과와 참고 보고서
 - `reference_materials/scripts/`
   - 테스트/리포트 생성용 보조 스크립트
 
@@ -47,16 +47,17 @@ streamlit run app.py
 1. `reference_materials/docs/BEGINNER_STRUCTURE_GUIDE.md`
 2. `reference_materials/docs/CURRENT_DATA_GUIDE.md`
 3. `reference_materials/docs/COLUMN_NAMING_GUIDE.md`
-4. `app.py`
-5. `core/agent.py`
+4. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
+5. `app.py`
+6. `core/agent.py`
 
-## 핵심 파일
+## 역할별 파일
 
-- `app.py`: Streamlit 채팅 UI
-- `ui_renderer.py`: 결과 표와 분석 요약 렌더링
-- `core/agent.py`: 새 조회와 후속 분석 라우팅
+- `app.py`: Streamlit 채팅 UI 시작점
+- `ui_renderer.py`: 결과 표, 조건, 분석 요약 렌더링
+- `core/agent.py`: 새 조회인지 후속 분석인지 결정하는 라우터
 - `core/parameter_resolver.py`: 질문 조건 추출과 para 승계
-- `core/domain_knowledge.py`: 제조 도메인 사전
-- `core/data_tools.py`: 조회 데이터셋 생성과 registry
+- `core/domain_knowledge.py`: 제조 도메인 기준 사전
+- `core/data_tools.py`: 조회 함수와 dataset registry
 - `core/data_analysis_engine.py`: LLM 기반 pandas 코드 생성과 실행
-- `core/number_format.py`: 수량 컬럼 단위 표시
+- `core/number_format.py`: 수량 컬럼 단위 표시 포맷

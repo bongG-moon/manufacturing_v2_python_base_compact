@@ -139,6 +139,11 @@ def extract_derived_columns_from_code(code: str) -> List[str]:
     patterns = [
         r"result\[['\"]([^'\"]+)['\"]\]\s*=",
         r"df\[['\"]([^'\"]+)['\"]\]\s*=",
+        # named aggregation:
+        # .agg(평균_불량율=('defect_rate', 'mean'))
+        r"([A-Za-z가-힣0-9_]+)\s*=\s*\(\s*['\"][^'\"]+['\"]\s*,",
+        # rename(columns={'defect_rate': '평균_불량율'})
+        r"rename\s*\(\s*columns\s*=\s*\{[^}]*['\"][^'\"]+['\"]\s*:\s*['\"]([^'\"]+)['\"]",
     ]
 
     for pattern in patterns:
@@ -164,14 +169,10 @@ def validate_plan_columns(plan: PreprocessPlan, columns: List[str]) -> List[str]
             if column_name and column_name.lower() != "none":
                 required_columns.append(column_name)
 
-    # 출력 컬럼, 정렬 컬럼, metric 컬럼은 실행 중 새로 만들어질 수 있으므로
-    # 원본 컬럼 + 파생 컬럼 목록을 함께 허용합니다.
-    for column in plan.get("output_columns", []) or []:
-        if column is None:
-            continue
-        column_name = str(column).strip()
-        if column_name and column_name.lower() != "none" and column_name not in allowed_columns:
-            required_columns.append(column_name)
+    # output_columns 는 "최종 결과 표에 어떤 컬럼이 보일지"에 대한 계획입니다.
+    # 집계/가공 후 새로 만들어지는 컬럼이 많기 때문에
+    # 여기서 원본 컬럼처럼 엄격하게 검사하면 정상적인 groupby/agg 요청까지 막히게 됩니다.
+    # 그래서 output_columns 는 미리 차단하지 않고 실행 결과에 맡깁니다.
 
     for field_name in ["sort_by", "metric_column"]:
         raw_value = plan.get(field_name, "")

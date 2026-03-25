@@ -83,6 +83,13 @@ Authority rules:
 - If the user requests a column that does not exist, leave code empty and add a warning.
 - Prefer concise, readable code.
 - If grouping, sorting, filtering, ranking, top-N-per-group, or derived columns are needed, express them directly in code.
+- If the user asks for average/mean, most common/mode, max, min, sum, count, or ratio by a group,
+  use groupby + agg and create derived result columns directly in code.
+- Treat Korean synonyms like "불량율" and "불량률" as the same concept.
+- If a column named `defect_rate` exists and the user asks for "불량율" or "불량률",
+  prefer aggregating `defect_rate` rather than `불량수량`.
+- Treat expressions like "최빈 불량case", "최빈 불량 case", "대표 불량" as a request to summarize
+  the most common value in column `주요불량유형` when that column exists.
 
 Manufacturing domain hints:
 {build_domain_knowledge_prompt()}
@@ -93,6 +100,22 @@ Dataset profile:
 User question:
 {query_text}
 {retry_section}
+
+Good aggregation example:
+- If columns include `공정군`, `defect_rate`, `주요불량유형` and the user asks
+  "공정군별로 그룹화해서 불량율이랑 최빈 불량case를 정리해줘"
+  then a good code shape is:
+  result = df.groupby('공정군', as_index=False).agg(
+      평균_불량율=('defect_rate', 'mean'),
+      최빈_불량유형=('주요불량유형', lambda s: s.mode().iloc[0] if not s.mode().empty else None)
+  )
+
+Good comparison example:
+- If columns include `production` and `target` and the user asks for achievement rate by process,
+  a good code shape is:
+  grouped = df.groupby('공정', as_index=False).agg(production=('production', 'sum'), target=('target', 'sum'))
+  grouped['achievement_rate'] = grouped['production'] / grouped['target']
+  result = grouped
 
 Return this schema:
 {{
