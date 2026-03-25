@@ -38,6 +38,17 @@
 
 2번과 3번은 새 조회가 아니라 `current_data`를 가공하는 요청입니다.
 
+이 값은 코드에서 아래 흐름으로 사용됩니다.
+
+- `app.py`의 `_run_chat_turn()`
+  - `run_agent()`에 현재 표 전달
+- `core/agent.py`의 `_has_current_data()`
+  - 현재 표가 있는지 확인
+- `core/agent.py`의 `_choose_query_mode()`
+  - 후속 분석으로 갈지 결정
+- `core/data_analysis_engine.py`의 `execute_analysis_query()`
+  - 실제 pandas 분석 수행
+
 ## 3. para 승계가 무엇인가
 
 첫 질문에서 잡힌 조건이 다음 질문에도 이어지는 기능입니다.
@@ -105,3 +116,31 @@
 
 이 질문이 새 조회인지 후속 분석인지 애매할 수 있습니다.  
 이럴 때는 `오늘 TEST 공정 불량 보여줘`처럼 다시 말하면 더 안정적입니다.
+
+## 7. 질문이 코드로 처리되는 방식
+
+초보자 입장에서는 “질문이 어디서 처리되는가”가 중요합니다.
+
+### 새 조회 질문
+
+예: `오늘 생산량 보여줘`
+
+코드 흐름:
+
+1. `core/parameter_resolver.py`의 `resolve_required_params()`
+2. `core/agent.py`의 `_run_retrieval()`
+3. `core/data_tools.py`의 `pick_retrieval_tools()`
+4. `core/data_tools.py`의 `execute_retrieval_tools()`
+
+### 후속 분석 질문
+
+예: `상위 5개만 보여줘`
+
+코드 흐름:
+
+1. `core/agent.py`의 `_run_followup_analysis()`
+2. `core/data_analysis_engine.py`의 `execute_analysis_query()`
+3. `core/analysis_llm.py`의 `build_llm_plan()`
+4. `core/safe_code_executor.py`의 `execute_safe_dataframe_code()`
+
+즉 후속 질문은 “LLM이 pandas 코드를 짠 뒤 실행하는 구조”입니다.

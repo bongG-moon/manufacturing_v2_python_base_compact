@@ -46,6 +46,106 @@ streamlit run app.py
 - `core/domain_knowledge.py`
   - 제조 용어 사전
 
+## 이 프로젝트는 LangGraph 구조인가?
+
+아니요. 이 compact 버전은 LangGraph 노드 그래프를 쓰지 않습니다.  
+대신 `run_agent()` 하나를 중심으로 여러 함수를 순서대로 호출하는 단순 구조입니다.
+
+즉 현재 실행 흐름은 대략 아래와 같습니다.
+
+```text
+app.py
+  -> run_agent()
+     -> resolve_required_params()
+     -> _choose_query_mode()
+     -> _run_retrieval() 또는 _run_followup_analysis()
+        -> execute_retrieval_tools() 또는 execute_analysis_query()
+  -> ui_renderer.py
+```
+
+초보자에게는 이 구조가 더 읽기 쉽습니다.  
+노드/엣지 개념보다 “어떤 함수가 다음 함수를 부르는가”만 보면 되기 때문입니다.
+
+## 코드 흐름을 함수 기준으로 보기
+
+### 1. 화면 시작
+
+- `app.py`
+  - `main()`
+    - Streamlit 화면 시작
+  - `_run_chat_turn()`
+    - 사용자 질문을 받아 `run_agent()` 호출
+
+### 2. 메인 라우터
+
+- `core/agent.py`
+  - `run_agent()`
+    - 전체 흐름의 시작점
+  - `_choose_query_mode()`
+    - 새 조회인지 후속 분석인지 결정
+  - `_run_retrieval()`
+    - 생산/목표/불량/설비/WIP 같은 새 조회 실행
+  - `_run_followup_analysis()`
+    - `current_data` 기준 pandas 분석 실행
+  - `_run_multi_retrieval()`
+    - 여러 데이터셋을 같이 조회하는 질문 처리
+
+### 3. 질문 조건 추출
+
+- `core/parameter_resolver.py`
+  - `resolve_required_params()`
+    - 날짜, 공정, 제품, MODE 같은 조건 추출
+  - `_inherit_from_context()`
+    - 이전 질문 조건 승계
+
+### 4. 조회 데이터 생성
+
+- `core/data_tools.py`
+  - `pick_retrieval_tools()`
+    - 어떤 데이터셋이 필요한지 결정
+  - `execute_retrieval_tools()`
+    - 선택된 조회 함수 실행
+  - `build_current_datasets()`
+    - 여러 데이터셋 결과를 묶어 저장
+  - `get_production_data()`, `get_target_data()`, `get_defect_rate()` 등
+    - 실제 mock 데이터 생성
+
+### 5. 후속 pandas 분석
+
+- `core/data_analysis_engine.py`
+  - `execute_analysis_query()`
+    - 후속 분석의 시작점
+  - `_find_semantic_retry_reason()`
+    - 질문 의도를 놓친 경우 한 번 더 수정 요청
+  - `_execute_with_retry()`
+    - 코드 실행 실패 시 재시도
+
+- `core/analysis_llm.py`
+  - `build_llm_prompt()`
+    - LLM에게 보낼 프롬프트 구성
+  - `build_llm_plan()`
+    - LLM 응답을 계획/코드 형태로 정리
+
+- `core/analysis_helpers.py`
+  - `find_missing_dimensions()`
+    - 없는 컬럼 요청인지 확인
+  - `validate_plan_columns()`
+    - 생성 코드가 실제 컬럼을 쓰는지 확인
+
+- `core/safe_code_executor.py`
+  - `execute_safe_dataframe_code()`
+    - 생성된 pandas 코드 안전 실행
+
+### 6. 화면 렌더링
+
+- `ui_renderer.py`
+  - `render_tool_results()`
+    - 결과 표 출력
+  - `render_analysis_summary()`
+    - 이번 분석 요약 출력
+  - `sync_context()`
+    - 다음 질문용 context 저장
+
 ## 초보자용 읽기 순서
 
 1. `START_HERE.md`

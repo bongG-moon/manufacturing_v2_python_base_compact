@@ -124,3 +124,50 @@
 - `대표 hold 사유` -> `hold_reason`
 - `평균 대기시간` -> `avg_wait_minutes`
 - `목표 대비 달성율` -> `production / target`
+
+## 6. 코드에서 도메인 지식이 실제로 쓰이는 위치
+
+### `core/domain_knowledge.py`
+
+이 파일이 기준 사전입니다.
+
+중요한 항목:
+
+- `PROCESS_SPECS`
+  - 공정과 공정군 정보
+- `PRODUCTS`
+  - 제품 후보
+- `PRODUCT_TECH_FAMILY`
+  - 제품과 공정군의 연결
+- `DATASET_METADATA`
+  - 데이터셋 이름, 라벨, 키워드
+
+### `core/data_tools.py`
+
+도메인 사전을 읽어서 실제 mock 데이터를 만듭니다.
+
+중요한 부분:
+
+- `_iter_valid_process_product_pairs()`
+  - 가능한 공정/제품 조합 생성
+- `_apply_common_filters()`
+  - 공정, 제품, MODE, DEN, TECH 조건 공통 적용
+- `DATASET_TOOL_FUNCTIONS`
+  - 데이터셋별 조회 함수 등록
+
+### `core/parameter_resolver.py`
+
+도메인 사전을 프롬프트에 넣고 질문 조건을 추출합니다.
+
+중요한 함수:
+
+- `resolve_required_params()`
+- `_inherit_from_context()`
+
+즉, 도메인 지식은 단순 설명용이 아니라
+
+1. 질문 해석
+2. 데이터 생성
+3. 필터 적용
+
+이 세 곳에서 실제로 사용됩니다.

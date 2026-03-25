@@ -64,14 +64,49 @@
 
 이렇게 생각하면 됩니다.
 
-## 4. 새 기능을 넣을 때 체크리스트
+## 4. 함수 기준으로 어디를 고치면 되나
+
+### 새 조회 함수를 추가할 때
+
+- 파일: `core/data_tools.py`
+- 주로 보는 부분:
+  - `get_production_data()` 같은 기존 함수
+  - `DATASET_TOOL_FUNCTIONS`
+  - `execute_retrieval_tools()`
+
+### 질문 키워드를 추가할 때
+
+- 파일: `core/domain_knowledge.py`
+- 주로 보는 부분:
+  - `DATASET_METADATA`
+
+### 질문 조건 추출이 이상할 때
+
+- 파일: `core/parameter_resolver.py`
+- 주로 보는 함수:
+  - `resolve_required_params()`
+  - `_inherit_from_context()`
+
+### 후속 분석이 이상할 때
+
+- 파일: `core/data_analysis_engine.py`
+- 주로 보는 함수:
+  - `execute_analysis_query()`
+  - `_find_semantic_retry_reason()`
+
+- 파일: `core/analysis_llm.py`
+- 주로 보는 함수:
+  - `build_llm_prompt()`
+  - `build_dataset_specific_hints()`
+
+## 5. 새 기능을 넣을 때 체크리스트
 
 - 이 질문은 새 조회인가, 후속 분석인가
 - 어떤 데이터셋이 필요한가
 - 대표 컬럼이 무엇인가
 - 테스트 질문 2~3개를 바로 만들 수 있는가
 
-## 5. 수정 후 빠른 확인 방법
+## 6. 수정 후 빠른 확인 방법
 
 ### 문법 확인
 
@@ -86,7 +121,7 @@ python -m py_compile app.py ui_renderer.py core\agent.py core\domain_knowledge.p
 - `공정별로 목표 대비 생산 달성율을 알려줘`
 - `오늘 TEST 공정 WIP 보여줘`
 
-## 6. 초보자에게 가장 중요한 팁
+## 7. 초보자에게 가장 중요한 팁
 
 코드를 한 번에 많이 바꾸지 마세요.
 
