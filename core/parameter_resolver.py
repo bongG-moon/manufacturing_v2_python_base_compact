@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from .analysis_contracts import RequiredParams
 from .config import SYSTEM_PROMPT, get_llm
-from .domain_knowledge import build_domain_knowledge_prompt
+from .domain_registry import build_domain_knowledge_prompt
 
 
 def _extract_text_from_response(content: Any) -> str:

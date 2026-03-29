@@ -1,8 +1,13 @@
 import random
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .domain_knowledge import DATASET_METADATA, PROCESS_SPECS, PRODUCTS, PRODUCT_TECH_FAMILY
+from .dataset_contracts import get_dataset_label as get_contract_dataset_label
+from .domain_knowledge import PROCESS_SPECS, PRODUCTS, PRODUCT_TECH_FAMILY
+from .domain_registry import get_dataset_keyword_map
 from .number_format import format_summary_quantity
+
+DATASET_METADATA = get_dataset_keyword_map()
 
 DEFECTS_BY_FAMILY = {
     "ASSY_PREP": ["particle", "contamination", "moisture_exceed", "bake_fail"],
@@ -184,6 +189,13 @@ def _iter_valid_process_product_pairs():
 def _make_lot_id(date: str, family: str, index: int) -> str:
     family_code = family.replace("_", "")[:4]
     return f"LOT-{date[-4:]}-{family_code}-{index:03d}"
+
+
+def _resolve_query_date(params: Dict[str, Any]) -> str:
+    raw_date = params.get("date")
+    if raw_date:
+        return str(raw_date)
+    return datetime.now().strftime("%Y%m%d")
 
 
 def get_production_data(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -475,7 +487,7 @@ def get_scrap_data(params: Dict[str, Any]) -> Dict[str, Any]:
 def get_recipe_condition_data(params: Dict[str, Any]) -> Dict[str, Any]:
     # 공정 조건/레시피 이력은 품질 이슈 원인을 설명할 때 자주 필요합니다.
     # 초보자도 읽기 쉽게 각 공정당 한 행에 핵심 파라미터를 묶어 둡니다.
-    date = str(params["date"])
+    date = _resolve_query_date(params)
     random.seed(_stable_seed(date, 8000))
     rows: List[Dict[str, Any]] = []
     for spec, product in _iter_valid_process_product_pairs():
@@ -509,7 +521,7 @@ def get_recipe_condition_data(params: Dict[str, Any]) -> Dict[str, Any]:
 def get_lot_trace_data(params: Dict[str, Any]) -> Dict[str, Any]:
     # Lot trace 데이터는 공정 이력과 상태를 함께 보여줘
     # "어느 공정에서 오래 멈췄는지" 같은 질문에 쓰기 좋습니다.
-    date = str(params["date"])
+    date = _resolve_query_date(params)
     random.seed(_stable_seed(date, 9000))
     rows: List[Dict[str, Any]] = []
     for index, (spec, product) in enumerate(_iter_valid_process_product_pairs(), start=1):
@@ -640,3 +652,82 @@ def build_current_datasets(tool_results: List[Dict[str, Any]]) -> Dict[str, Any]
             "data": rows if isinstance(rows, list) else [],
         }
     return datasets
+
+
+def get_dataset_registry() -> Dict[str, Dict[str, Any]]:
+    keyword_map = get_dataset_keyword_map()
+    registry: Dict[str, Dict[str, Any]] = {}
+    for dataset_key, tool_fn in DATASET_TOOL_FUNCTIONS.items():
+        keyword_meta = keyword_map.get(dataset_key, {})
+        registry[dataset_key] = {
+            "label": str(keyword_meta.get("label", get_contract_dataset_label(dataset_key))),
+            "tool_name": tool_fn.__name__,
+            "tool": tool_fn,
+            "keywords": list(keyword_meta.get("keywords", [])),
+        }
+    return registry
+
+
+def get_dataset_label(dataset_key: str) -> str:
+    dataset_meta = get_dataset_registry().get(dataset_key, {})
+    return str(dataset_meta.get("label", dataset_key))
+
+
+def pick_retrieval_tools(query_text: str) -> List[str]:
+    query = str(query_text or "").lower()
+    selected: List[str] = []
+    dataset_registry = get_dataset_registry()
+
+    for dataset_key, dataset_meta in dataset_registry.items():
+        keywords = dataset_meta.get("keywords", [])
+        if any(token in query for token in keywords):
+            selected.append(dataset_key)
+
+    explicit_trace_tokens = ["trace", "이력", "추적", "traceability"]
+    if "hold" in selected and "lot_trace" in selected and not any(token in query for token in explicit_trace_tokens):
+        selected = [item for item in selected if item != "lot_trace"]
+
+    return selected
+
+
+def pick_retrieval_tool(query_text: str) -> str | None:
+    selected = pick_retrieval_tools(query_text)
+    return selected[0] if selected else None
+
+
+def execute_retrieval_tools(dataset_keys: List[str], params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    dataset_registry = get_dataset_registry()
+    for dataset_key in dataset_keys:
+        dataset_meta = dataset_registry.get(dataset_key)
+        if not dataset_meta:
+            continue
+
+        result = dataset_meta["tool"](params)
+        if isinstance(result, dict):
+            result["dataset_key"] = dataset_key
+            result["dataset_label"] = dataset_meta["label"]
+        results.append(result)
+    return results
+
+
+def pick_retrieval_tools(query_text: str) -> List[str]:
+    query = str(query_text or "").lower()
+    selected: List[str] = []
+    dataset_registry = get_dataset_registry()
+
+    for dataset_key, dataset_meta in dataset_registry.items():
+        keywords = dataset_meta.get("keywords", [])
+        if any(str(token).lower() in query for token in keywords):
+            selected.append(dataset_key)
+
+    explicit_trace_tokens = ["trace", "\uc774\ub825", "\ucd94\uc801", "traceability"]
+    if "hold" in selected and "lot_trace" in selected and not any(token in query for token in explicit_trace_tokens):
+        selected = [item for item in selected if item != "lot_trace"]
+
+    return selected
+
+
+def pick_retrieval_tool(query_text: str) -> str | None:
+    selected = pick_retrieval_tools(query_text)
+    return selected[0] if selected else None

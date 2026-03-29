@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from .analysis_contracts import PreprocessPlan
 from .analysis_helpers import dataset_profile
 from .config import get_llm
-from .domain_knowledge import build_domain_knowledge_prompt
+from .domain_registry import build_domain_knowledge_prompt
 
 
 def build_dataset_specific_hints(data: List[Dict[str, Any]], query_text: str) -> str:
