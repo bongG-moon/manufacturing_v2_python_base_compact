@@ -22,6 +22,8 @@
     "docs/QUESTION_PATTERNS.md",
     "docs/ANALYSIS_PATTERNS.md",
     "docs/EVALUATION.md",
-    "docs/SYNC_WORKFLOW.md"
+    "docs/SYNC_WORKFLOW.md",
+    "docs/CODEX_WORKFLOW.md",
+    "docs/HARNESS_SCRIPT_QUICKSTART.md"
   ]
 }
