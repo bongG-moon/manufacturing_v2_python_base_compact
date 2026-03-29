@@ -149,10 +149,24 @@ app.py
 ## 초보자용 읽기 순서
 
 1. `START_HERE.md`
-2. `QUESTION_GUIDE.md`
-3. `DOMAIN_GUIDE.md`
-4. `BEGINNER_ADD_GUIDE.md`
-5. `TEST_QUESTIONS.md`
+2. `MAIN_SCREEN_FEATURES_DEEP_DIVE.md`
+3. `QUESTION_GUIDE.md`
+4. `DOMAIN_GUIDE.md`
+5. `BEGINNER_ADD_GUIDE.md`
+6. `TEST_QUESTIONS.md`
+
+## 메인 화면 확장 기능이 궁금하다면
+
+최근 메인 화면에는 단순 채팅 외에도 아래 기능이 들어가 있습니다.
+
+- `Available Datasets`
+- `Domain Registry`
+- `Recommended Sub Agents`
+- `Engineer detail mode`
+
+이 기능들이 어디에 구현되어 있고 실제 질문 처리와 어떻게 연결되는지 자세히 보려면 아래 문서를 먼저 읽으면 됩니다.
+
+- `MAIN_SCREEN_FEATURES_DEEP_DIVE.md`
 
 ## 정말 중요한 개념 2개
 
