@@ -1,0 +1,27 @@
+{
+  "service_name": "manufacturing-agent",
+  "version": "0.1.0",
+  "target_import_path": ".harness/manufacturing-agent",
+  "source_repositories": [
+    {
+      "name": "manufacturing_v2_python_base",
+      "local_path": "C:/Users/qkekt/Desktop/제조_에이전트_python기반",
+      "role": "full implementation reference"
+    },
+    {
+      "name": "manufacturing_v2_python_base_compact",
+      "local_path": "C:/Users/qkekt/Desktop/compact_manufacturing_service",
+      "role": "compact implementation reference"
+    }
+  ],
+  "required_docs": [
+    "docs/ARCHITECTURE.md",
+    "docs/HARNESS_PRINCIPLES.md",
+    "docs/DOMAIN_MODEL.md",
+    "docs/DATASET_CATALOG.md",
+    "docs/QUESTION_PATTERNS.md",
+    "docs/ANALYSIS_PATTERNS.md",
+    "docs/EVALUATION.md",
+    "docs/SYNC_WORKFLOW.md"
+  ]
+}
